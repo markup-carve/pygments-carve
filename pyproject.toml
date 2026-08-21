@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pygments-carve"
+version = "0.1.0"
+description = "Carve markup language lexer for Pygments"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors = [{ name = "Mark Scherer" }]
+keywords = ["carve", "crv", "pygments", "lexer", "syntax-highlighting", "markup"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Plugins",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Text Processing :: Markup",
+]
+dependencies = ["Pygments>=2.12"]
+
+[project.urls]
+Homepage = "https://markup-carve.github.io/carve/"
+Source = "https://github.com/markup-carve/pygments-carve"
+Issues = "https://github.com/markup-carve/pygments-carve/issues"
+
+# This entry point is what makes `pip install pygments-carve` enough: Pygments
+# discovers the lexer through it, so `carve` and `crv` become working fence
+# words in MkDocs, Sphinx, zensical and anything else built on Pygments.
+[project.entry-points."pygments.lexers"]
+carve = "pygments_carve.lexer:CarveLexer"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]

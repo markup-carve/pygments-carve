@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+*.png binary
+*.pdf binary
+
+# Not needed in the published sdist/wheel.
+/tests export-ignore
+/spec export-ignore
+/scripts export-ignore
+/.github export-ignore
+/.gitignore export-ignore
+/.gitattributes export-ignore
+/.editorconfig export-ignore
+/.gitmodules export-ignore
