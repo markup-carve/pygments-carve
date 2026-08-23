@@ -179,13 +179,36 @@ class _Reader:
                 self.i += 1
 
 
+#: Characters that would make the array literal the HEAD of a larger expression
+#: rather than the whole value - ``[...].concat(more)``, ``[...].filter(f)``,
+#: ``[...] .concat`` and so on. Reading only the literal there would return a
+#: SUBSET of the inventory and report it as the whole thing, which the
+#: ``MIN_CONSTRUCTS`` floor need not catch: upstream can append rows without
+#: raising its own floor. So the suffix is refused rather than ignored.
+_EXPRESSION_SUFFIX = set('.([`+-*/%?,=<>&|^')
+
+
 def read_exported_array(source, name):
-    """The array literal exported as ``name``, as Python data."""
+    """The array literal exported as ``name``, as Python data.
+
+    The literal has to BE the exported value. A trailing expression is refused,
+    not silently dropped - see ``_EXPRESSION_SUFFIX``.
+    """
     text = _strip_comments(source)
     match = re.search(r'export\s+const\s+%s\s*=\s*\[' % re.escape(name), text)
     if not match:
         raise InventoryError('constructs.js exports no array called %r any more' % name)
-    return _Reader(text, match.end() - 1).array()
+    reader = _Reader(text, match.end() - 1)
+    array = reader.array()
+    reader.skip()
+    tail = text[reader.i:reader.i + 1]
+    if tail in _EXPRESSION_SUFFIX:
+        raise InventoryError(
+            '%s is not a plain array literal any more - it is followed by %r, so this reader '
+            'would have returned only the first %d entries and called that the inventory'
+            % (name, text[reader.i:reader.i + 40].strip(), len(array))
+        )
+    return array
 
 
 def read_exported_int(source, name):

@@ -97,6 +97,16 @@ REFUSED = [
         "export const INVENTORY = [ { name: 'a', sample: 'x', payload: 'x' } ];",
         'exports no array',
     ),
+    (
+        'the literal being only the head of a larger expression',
+        "export const CONSTRUCTS = [ { name: 'a', sample: 'x', payload: 'x' } ].concat(MORE);",
+        'not a plain array literal',
+    ),
+    (
+        'a filter applied to the literal',
+        "export const CONSTRUCTS = [ { name: 'a', sample: 'x', payload: 'x' } ]\n    .filter(Boolean);",
+        'not a plain array literal',
+    ),
 ]
 
 
@@ -106,6 +116,13 @@ def test_the_reader_refuses_what_it_cannot_read(what, source, complaint):
     with pytest.raises(inventory.InventoryError) as raised:
         inventory.read_exported_array(source, 'CONSTRUCTS')
     assert complaint in str(raised.value), str(raised.value)
+
+
+def test_a_plain_literal_is_still_accepted_after_the_suffix_rule():
+    """The suffix rule must not reject the shape upstream actually writes."""
+    for tail in (';', '', '\n\nexport const LITERALS = [];'):
+        source = "export const CONSTRUCTS = [ { name: 'a', sample: 'x', payload: 'x' } ]%s" % tail
+        assert len(inventory.read_exported_array(source, 'CONSTRUCTS')) == 1, tail
 
 
 def test_a_short_read_is_refused_against_the_declared_floor(tmp_path):
