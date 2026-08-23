@@ -14,8 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # The corpus test lexes every spec document; without the submodule it
-          # skips, which would read as a pass.
+          # BOTH submodules. The corpus test lexes every spec document and the
+          # construct sweep reads carve-grammars' inventory in place; without
+          # them each collects zero cases, which reads as a pass. That is no
+          # longer only a comment - tests/test_submodules.py fails here when
+          # either is missing, because CI is set.
           submodules: true
 
       - uses: actions/setup-python@v5

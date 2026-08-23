@@ -13,7 +13,7 @@ import pytest
 
 from pygments_carve import CarveLexer
 
-from coverage import error_tokens
+from coverage import error_tokens, refuse_skip_in_ci
 
 CORPUS = pathlib.Path(__file__).parent.parent / 'spec' / 'tests' / 'corpus'
 DOCUMENTS = sorted(CORPUS.glob('*.crv')) if CORPUS.is_dir() else []
