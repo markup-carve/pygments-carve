@@ -1,9 +1,16 @@
 """Every construct in the shared inventory carries a scope, or is recorded here.
 
-The inventory is carve-grammars' ``tests/lib/constructs.js``, vendored as
-``constructs.json``. It is the same list the Prism, highlight.js and TextMate
-sweeps run, which is the point: a construct cannot be covered on some surfaces
-and quietly missing on this one.
+The inventory is carve-grammars' ``tests/lib/constructs.js``, READ IN PLACE from
+the ``carve-grammars`` submodule. It is the same list the Prism, highlight.js
+and TextMate sweeps run, which is the point: a construct cannot be covered on
+some surfaces and quietly missing on this one.
+
+It used to be a vendored ``constructs.json``, and the copy is what made that
+claim untrue - nothing in the org moved it and nothing compared it, so it sat at
+173 entries against upstream's 175 and nobody could see it
+(markup-carve/pygments-carve#1). Reading upstream in place means there is no
+second list to drift; a new construct arrives with the pin, and this file is
+where the decision to lex it or write down why not gets forced.
 
 NOT_COVERED is an allowlist, not a skip list. An entry needs a reason, and an
 entry that starts passing FAILS the suite - so a gap that gets fixed cannot sit
@@ -15,18 +22,26 @@ import pytest
 
 from pygments_carve import CarveLexer
 
+import inventory
 from coverage import load_constructs, payload_of, scope_of
 
 #: construct name -> why this lexer does not scope its payload.
 #:
-#: Empty, and meant to stay that way. All 173 constructs in the shared inventory
-#: carry a scope. The mechanism is kept because the inventory grows: a construct
-#: added upstream shows up here as a failure, and the choice is then to lex it or
-#: to write down why not - never to let it pass unnoticed.
+#: Empty, and meant to stay that way. Every construct in the shared inventory
+#: carries a scope - including ``reference image`` and ``collapsed reference
+#: image``, the two the vendored copy was missing. The mechanism is kept because
+#: the inventory grows: a construct added upstream shows up here as a failure,
+#: and the choice is then to lex it or to write down why not - never to let it
+#: pass unnoticed.
 NOT_COVERED = {}
 
 LEXER = CarveLexer()
-CONSTRUCTS = load_constructs()
+CONSTRUCTS = load_constructs() if inventory.available() else []
+
+pytestmark = pytest.mark.skipif(
+    not inventory.available(),
+    reason='carve-grammars submodule not present; run: git submodule update --init',
+)
 
 
 def _named(construct):
@@ -75,7 +90,7 @@ def test_attribute_constructs_are_not_over_claimed():
     # scope that means "the attribute rule claimed this".
     offenders = []
     for construct in CONSTRUCTS:
-        if construct['attr'] or construct['name'] in NOT_COVERED:
+        if construct.get('attr') or construct['name'] in NOT_COVERED:
             continue
         scope = scope_of(LEXER, construct['sample'], payload_of(construct))
         if scope is Name.Attribute:

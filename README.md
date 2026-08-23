@@ -72,23 +72,29 @@ treat it.
 
 ```sh
 pip install -e '.[test]'
-git submodule update --init    # the spec corpus
+git submodule update --init    # the spec corpus, and carve-grammars
 pytest -q
 ```
 
-Three suites, and the split matters:
+Four suites, and the split matters:
 
-- **`test_constructs.py`** runs the 173-entry construct inventory vendored from
-  carve-grammars - the same list the Prism, highlight.js and TextMate sweeps run
-  - and asserts each construct's payload lands in a token that is not plain
-  text. This is the measure that a "the lexer ran without raising" check cannot
-  give you.
+- **`test_constructs.py`** runs the shared construct inventory - the same list
+  the Prism, highlight.js and TextMate sweeps run - and asserts each construct's
+  payload lands in a token that is not plain text. This is the measure that a
+  "the lexer ran without raising" check cannot give you. The inventory is read
+  in place from `carve-grammars/tests/lib/constructs.js`, so there is no local
+  copy to fall behind it; `tests/inventory.py` is the reader and
+  `test_inventory.py` is what stops it silently returning a short list.
 - **`test_corpus.py`** lexes all 1325 documents of the spec corpus and asserts
   no `Token.Error`. It catches what a construct list cannot: a construct nobody
   thought to write down.
 - **`test_registration.py`** resolves the lexer the way a consumer does, through
   the entry point, so a packaging mistake fails rather than passing on a direct
   import.
+- **`test_submodules.py`** is the one file outside every `skipif`. Both suites
+  above are parametrized over a directory, so an unchecked-out submodule
+  collects zero cases and reports green; locally that is a skip, and in CI this
+  turns it into a failure.
 
 ## Related
 

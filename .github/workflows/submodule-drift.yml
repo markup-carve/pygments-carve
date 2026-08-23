@@ -1,0 +1,72 @@
+name: Submodule drift
+
+# Two pins, and until this job neither was watched from here.
+#
+# `spec` is bumped by carve's own `bump-downstream` workflow when the corpus
+# moves, so its lag is usually short - but nothing here says so, and that
+# workflow has been down before (markup-carve/carve#1591, a 401 on BUMP_TOKEN
+# that stopped every bump job in the org).
+#
+# `carve-grammars` is NOT covered by that workflow at all, and it is worth being
+# explicit about why rather than assuming otherwise: `bump-downstream` fires on
+# pushes to carve's own corpus and carries ONE submodule per repo, spelled
+# `spec` (or `tests/spec`). It would not fire for a carve-grammars merge and
+# would not move this pin if it did. The construct inventory this repo's sweep
+# runs lives behind that pin, so a pin nobody watches is the same shape as the
+# vendored copy it replaced - just visible in git rather than in a JSON file.
+#
+# Reported, not gated, the same split carve-grammars' `spec-drift.yml` uses:
+# moving a pin here is a deliberate review, because a construct arriving in the
+# inventory is a decision to lex it or to write down why not. Failing on lag
+# would go red for a merge in another repository, which teaches people to stop
+# reading the tab - and then the real conditions underneath go unseen too.
+# A pin that is not a commit on that repo's main DOES fail: a reading nobody can
+# reproduce has no honest answer.
+
+on:
+  schedule:
+    # 05:20 UTC daily, after the org's other drift jobs at 05:00.
+    - cron: "20 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  pins:
+    runs-on: ubuntu-latest
+    strategy:
+      # Report both, even when the first is stale: a job that stops at the
+      # first lagging pin hides the other one.
+      fail-fast: false
+      matrix:
+        include:
+          - path: spec
+            repo: markup-carve/carve
+          - path: carve-grammars
+            repo: markup-carve/carve-grammars
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out ${{ matrix.repo }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          path: upstream
+          fetch-depth: 0
+
+      - name: Compare the ${{ matrix.path }} pin against ${{ matrix.repo }} main
+        run: |
+          set -euo pipefail
+          rev="$(git rev-parse "HEAD:${{ matrix.path }}")"
+          if ! git -C upstream cat-file -e "${rev}^{commit}" 2>/dev/null; then
+            echo "::error::${{ matrix.path }} pins ${rev}, which is not a commit in ${{ matrix.repo }}"
+            exit 1
+          fi
+          if ! git -C upstream merge-base --is-ancestor "${rev}" origin/main; then
+            echo "::error::${{ matrix.path }} pins ${rev}, which is not on main - the pin came from an unmerged or rewritten branch"
+            exit 1
+          fi
+          behind="$(git -C upstream rev-list --count "${rev}..origin/main")"
+          echo "${{ matrix.path }} pin: ${rev} ($(git -C upstream log -1 --format=%s "${rev}"))"
+          echo "${{ matrix.repo }} main is ${behind} commit(s) ahead"
+          if [ "${behind}" -gt 0 ]; then
+            echo "::warning::the ${{ matrix.path }} submodule is ${behind} commit(s) behind ${{ matrix.repo }} main"
+          fi

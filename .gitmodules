@@ -1,3 +1,7 @@
 [submodule "spec"]
 	path = spec
 	url = https://github.com/markup-carve/carve.git
+[submodule "carve-grammars"]
+	path = carve-grammars
+	url = https://github.com/markup-carve/carve-grammars.git
+	branch = main
