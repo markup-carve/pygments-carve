@@ -48,7 +48,9 @@ Inline: the emphasis families in Carve's spelling plus their braced forced
 forms, code and inline literals, math, links, images, spans, attributes,
 footnotes and inline footnotes, citations, cross-references, autolinks,
 extensions (`:name[...]`), symbols, code callouts, mentions, tags, escapes,
-hard breaks and the typographic runs.
+hard breaks, and the dash, arrow and ellipsis runs of smart typography - though
+not yet all of that family: `<=`, `>=`, `!=` and `+-` are not scoped, and `<->`
+only partly (markup-carve/pygments-carve#28).
 
 ## Deliberate limits
 
@@ -80,11 +82,22 @@ The suites, and the split matters:
 
 - **`test_constructs.py`** runs the shared construct inventory - the same list
   the Prism, highlight.js and TextMate sweeps run - and asserts each construct's
-  payload lands in a token that is not plain text. This is the measure that a
-  "the lexer ran without raising" check cannot give you. The inventory is read
-  in place from `carve-grammars/tests/lib/constructs.js`, so there is no local
-  copy to fall behind it; `tests/inventory.py` is the reader and
-  `test_inventory.py` is what stops it silently returning a short list.
+  payload lands in a token that is not plain text. That is a cross-surface
+  parity check: a construct covered on Prism or TextMate is not quietly missing
+  here. It is deliberately *not* what holds the rules down - any non-text token
+  satisfies it, so it cannot tell a construct's own rule from a neighbour that
+  catches the same payload. The inventory is read in place from
+  `carve-grammars/tests/lib/constructs.js`, so there is no local copy to fall
+  behind it; `tests/inventory.py` is the reader and `test_inventory.py` is what
+  stops it silently returning a short list.
+- **`test_inline_rules.py`** records, for every one of the 46 rules in the
+  inline state, a sample and the whole run of tokens the lexer colours in it -
+  the delimiters included, because a same-type fallback gets those wrong and the
+  payload's type right. Then it deletes each rule from the lexer source,
+  rebuilds, and requires that rule's pin to stop holding, so the pins are proved
+  sharp from inside the suite rather than asserted. Before it, sixteen of those
+  rules could be deleted outright with the suite green
+  (markup-carve/pygments-carve#25).
 - **`test_corpus.py`** lexes every document of the spec corpus and asserts that
   the definitions the corpus pins are scoped as definitions. A corpus case is a
   source next to the HTML it renders to, so the pair says which lines are
