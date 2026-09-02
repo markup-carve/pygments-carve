@@ -466,13 +466,18 @@ class CarveLexer(RegexLexer):
             (r'(/)(\S(?:[^\n]*?\S)?)(/)', bygroups(Punctuation, Generic.Emph, Punctuation)),
             (r'(_)(\S(?:[^\n]*?\S)?)(_)', bygroups(Punctuation, Generic.Underline, Punctuation)),
             (r'(~)(\S(?:[^\n]*?\S)?)(~)', bygroups(Punctuation, Generic.Deleted, Punctuation)),
-            # A bare `=` that touches a smart-typography run is not a highlight
-            # delimiter: PART 9's inline precedence excepts "a delimiter that
-            # begins a multi-char smart-typography pattern ... the pattern is
-            # consumed first". Both ends are guarded, which is what the engine
-            # does - `x =y z<= w` renders no mark at all - and is one character
-            # more than Prism's rule, whose closer is unguarded.
-            (r'(?<![<>!])(=)(?!>)(\S(?:[^\n]*?\S)?)(?<![<>!])(=)(?!>)',
+            # A bare `=` carrying a comparison or an arrow tail on its left is
+            # not a highlight delimiter: PART 9's inline precedence excepts "a
+            # delimiter that begins a multi-char smart-typography pattern ...
+            # the pattern is consumed first". `< > !` is every character the
+            # language puts in front of a `=` to make one.
+            #
+            # BOTH ends are guarded, one more than Prism, whose closer is
+            # unguarded. The engine guards both: `x =y z<= w` renders
+            # `x =y z≤ w`, no mark at all. Nothing is guarded on the RIGHT,
+            # also from the engine - `=>` is not an arrow any more, so
+            # `a =foo=> b` marks `foo` and `a =>foo= b` marks `>foo`.
+            (r'(?<![<>!])(=)(\S(?:[^\n]*?\S)?)(?<![<>!])(=)',
              bygroups(Punctuation, Generic.Inserted, Punctuation)),
 
             # A mention and a tag, each one token: the sigil is part of the name

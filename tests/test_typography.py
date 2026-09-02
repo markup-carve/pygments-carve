@@ -249,6 +249,11 @@ def test_a_double_arrow_before_a_gt_is_not_one_run():
     # And a real highlight still closes with a comparison later on the line.
     ('a =m= b <= c', ((Punctuation, '='), ('mark', 'm'), (Punctuation, '='),
                       (Operator, '<='))),
+    # Nothing is guarded on the RIGHT. `=>` is not an arrow any more, so a `=`
+    # before a `>` is an ordinary delimiter: the engine marks `foo` in the first
+    # and `>foo` in the second.
+    ('a =foo=> b', ((Punctuation, '='), ('mark', 'foo'), (Punctuation, '='))),
+    ('a =>foo= b', ((Punctuation, '='), ('mark', '>foo'), (Punctuation, '='))),
 ])
 def test_a_bare_equals_beside_a_pattern_is_not_a_highlight(sample, expect):
     got = scoped(LEXER, sample)
