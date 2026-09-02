@@ -16,5 +16,9 @@ Nothing released yet. The initial capability set:
 - Coverage of every construct in carve-grammars' shared inventory, asserted
   per construct rather than assumed. The inventory is read in place from the
   `carve-grammars` submodule, so this repo carries no copy of it to fall behind.
-- A corpus suite that lexes the full spec corpus and requires no `Token.Error`,
-  which is what catches constructs the inventory does not name.
+- A corpus suite that lexes every document of the spec corpus and asserts the
+  lexer scopes the definitions the corpus itself pins - the ones whose expected
+  HTML shows them consumed. It measures a construct on the day the spec pin
+  brings it in, with nobody having to name it in a list first.
+  (It replaced a zero-`Token.Error` assertion that carried that claim and could
+  not fail: the `inline` state's catch-all makes `Token.Error` unreachable.)

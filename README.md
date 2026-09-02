@@ -76,7 +76,7 @@ git submodule update --init    # the spec corpus, and carve-grammars
 pytest -q
 ```
 
-Four suites, and the split matters:
+The suites, and the split matters:
 
 - **`test_constructs.py`** runs the shared construct inventory - the same list
   the Prism, highlight.js and TextMate sweeps run - and asserts each construct's
@@ -85,16 +85,24 @@ Four suites, and the split matters:
   in place from `carve-grammars/tests/lib/constructs.js`, so there is no local
   copy to fall behind it; `tests/inventory.py` is the reader and
   `test_inventory.py` is what stops it silently returning a short list.
-- **`test_corpus.py`** lexes all 1325 documents of the spec corpus and asserts
-  no `Token.Error`. It catches what a construct list cannot: a construct nobody
-  thought to write down.
+- **`test_corpus.py`** lexes every document of the spec corpus and asserts that
+  the definitions the corpus pins are scoped as definitions. A corpus case is a
+  source next to the HTML it renders to, so the pair says which lines are
+  definitions without a parser here - a definition is consumed, so its
+  `[label]:` text does not survive into the HTML. This is what a construct list
+  cannot do: it measures a construct the day the spec pin brings it in, with
+  nobody having to write it down first. It used to assert only that no document
+  produces a `Token.Error`, which nothing can - see
+  markup-carve/pygments-carve#21.
+- **`test_definitions.py`** pins the definition shapes by hand, including the
+  controls: a line that is NOT a definition must stay plain content.
 - **`test_registration.py`** resolves the lexer the way a consumer does, through
   the entry point, so a packaging mistake fails rather than passing on a direct
   import.
-- **`test_submodules.py`** is the one file outside every `skipif`. Both suites
-  above are parametrized over a directory, so an unchecked-out submodule
-  collects zero cases and reports green; locally that is a skip, and in CI this
-  turns it into a failure.
+- **`test_submodules.py`** is the one file outside every `skipif`. The corpus
+  and construct suites are parametrized over a directory, so an unchecked-out
+  submodule collects zero cases and reports green; locally that is a skip, and
+  in CI this turns it into a failure.
 
 ## Related
 
