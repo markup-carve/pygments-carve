@@ -26,27 +26,21 @@ Deleting a rule AND its pin together still passes, and that is deliberate: the
 diff then shows a pin being removed, which is a reviewable act. What this gate
 ends is deletion that nothing anywhere records.
 
-THE FOUR RULES THE SHARED INVENTORY DOES NOT NAME. Arrows, ellipsis, the
-mirrored `*/x/*` nesting and `{>>...<<}` have no entry in carve-grammars'
-inventory, so no sweep on any surface tests them. They are pinned here rather
-than dropped, and the two halves of that are not the same decision:
+THE THREE RULES THE SHARED INVENTORY DOES NOT NAME. Arrows, the ellipsis and the
+mirrored `*/x/*` nesting have no entry in carve-grammars' inventory, so no sweep
+on any surface tests them. They are pinned here rather than dropped, because
+they are real Carve: corpus `20-smart-typography-arrows-and-symbols` renders
+`-->` as an arrow and `15-heading-ids-4` renders `...` as an ellipsis, and all
+three sibling grammars scope them - TextMate in one `smart_typography` pattern
+of thirteen alternatives. The inventory names that construct but pins a single
+sample, `a -- b`, so twelve of the thirteen are untested on every surface in the
+org. That is an upstream gap, reported as markup-carve/carve-grammars#373, not
+something to fix by editing a list this repo reads in place.
 
-- ARROWS and ELLIPSIS are real Carve. Corpus `20-smart-typography-arrows-and-
-  symbols` renders `-->` as an arrow and `15-heading-ids-4` renders `...` as an
-  ellipsis, and all three sibling grammars scope them - TextMate in one
-  `smart_typography` pattern of thirteen alternatives. The inventory names that
-  construct but pins a single sample, `a -- b`, so twelve of the thirteen are
-  untested on every surface in the org. That is an upstream gap, reported as
-  markup-carve/carve-grammars#373, not something to fix by editing a list this
-  repo reads in place.
-- `{>>...<<}` IS NOT CARVE SYNTAX. It is CriticMarkup's own spelling, which the
-  spec quotes once as prior art (`docs/case-study/background.md`) and which
-  Carve deliberately re-spelled: the comment is `{#note#}`, pinned above as
-  `critic comment`. No corpus document uses it, and no sibling grammar carries
-  it. The rule therefore colours a run that Carve renders as plain text. Removing
-  it is a behavior change with its own reasoning, so it is pinned here - the pin
-  records what the lexer does today, and the note keeps that from reading as
-  endorsement - and tracked as markup-carve/pygments-carve#27.
+A FOURTH used to sit beside them and no longer does. `{>>...<<}` is
+CriticMarkup's own spelling, not Carve's, and the rule for it was removed in
+markup-carve/pygments-carve#27; `test_the_criticmarkup_spelling_is_not_scoped`
+below is the control that keeps it gone.
 """
 
 import collections
@@ -125,9 +119,6 @@ PINS = [
         [(Punctuation, '{+'), (Generic.Inserted, 'ins'), (Punctuation, '+}')]),
     Pin('critic delete', 'a {-del-} b',
         [(Punctuation, '{-'), (Generic.Deleted, 'del'), (Punctuation, '-}')]),
-    Pin('annotation', 'a {>>note<<} b',
-        [(Punctuation, '{>>'), (Comment, 'note'), (Punctuation, '<<}')],
-        note='NOT CARVE. See the module docstring.'),
     Pin('template span', 'a {%tpl%} b',
         [(Comment.Preproc, '{%'), (Comment, 'tpl'), (Comment.Preproc, '%}')]),
     Pin('inline footnote', 'a ^[note] b',
@@ -214,7 +205,7 @@ def test_the_reading_matches_what_pygments_compiled():
     """The source reading must find the rules Pygments actually compiled.
 
     Every test below mutates the SOURCE. A reader that finds forty of
-    forty-six rules would mutate the wrong lines and pin a shorter list, so the
+    forty-five rules would mutate the wrong lines and pin a shorter list, so the
     reading is checked against the compiled state rather than assumed.
     """
     compiled = rule_patterns(LEXER)
@@ -264,7 +255,7 @@ def test_pin_is_sharp(index):
     """Deleting the rule must stop its pin from holding.
 
     THE GATE PROVING IT CAN SAY NO. Without this, the pins above are a claim;
-    with it, every one of the 46 rules is known to be undeletable in silence.
+    with it, every one of the 45 rules is known to be undeletable in silence.
     """
     assert index < len(RULES), 'no rule %d to delete; see the pin count' % index
     pin = PINS[index]
@@ -274,3 +265,31 @@ def test_pin_is_sharp(index):
         'removed with nothing objecting. Give the pin a sample that only this '
         'rule can produce.' % (index, pin.name)
     )
+
+
+def test_the_criticmarkup_spelling_is_not_scoped():
+    """`{>>...<<}` is CriticMarkup's spelling, and Carve renders it as text.
+
+    The lexer carried a rule colouring it as punctuation plus a comment, which
+    claimed a construct the language does not have
+    (markup-carve/pygments-carve#27). Four measurements settled it, and this
+    control is what keeps a plausible-looking rule from coming back:
+
+    - the spec's own reference renderer emits it literally -
+      `a {>>note<<} b` renders `<p>a {&gt;&gt;note&lt;&lt;} b</p>`, while
+      `a {# note #} b` renders a `<span class="critic-comment">`;
+    - carve-grammars' Tiptap wire fixture `editorial-marks` pins it as UNMARKED
+      text, in the same line where `{+add+}` and `{-cut-}` do carry marks;
+    - the only `{>>` in the whole spec tree is a prior-art quotation of
+      CriticMarkup in `docs/case-study/background.md`, in a section surveying
+      other formats beside Fountain and YAML front matter - not a statement that
+      Carve recognizes it;
+    - no document of the 1681 in the corpus directories uses it, and the Prism,
+      highlight.js and TextMate grammars carry no rule for it.
+
+    Carve re-spelled the whole family with single delimiters. The comment is
+    `{#note#}`, pinned above as `critic comment`.
+    """
+    assert scoped_run(LEXER, 'a {>>note<<} b') == ()
+    assert scoped_run(LEXER, 'a {# note #} b') == (
+        (Punctuation, '{#'), (Comment, ' note '), (Punctuation, '#}'))

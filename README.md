@@ -95,7 +95,7 @@ The suites, and the split matters:
   `carve-grammars/tests/lib/constructs.js`, so there is no local copy to fall
   behind it; `tests/inventory.py` is the reader and `test_inventory.py` is what
   stops it silently returning a short list.
-- **`test_inline_rules.py`** records, for every one of the 46 rules in the
+- **`test_inline_rules.py`** records, for every one of the 45 rules in the
   inline state, a sample and the whole run of tokens the lexer colours in it -
   the delimiters included, because a same-type fallback gets those wrong and the
   payload's type right. Then it deletes each rule from the lexer source,

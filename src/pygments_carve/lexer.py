@@ -420,7 +420,6 @@ class CarveLexer(RegexLexer):
             (r'(\{=)([^\n]+?)(=\})', bygroups(Punctuation, Generic.Inserted, Punctuation)),
             (r'(\{\+)([^\n]+?)(\+\})', bygroups(Punctuation, Generic.Inserted, Punctuation)),
             (r'(\{-)([^\n]+?)(-\})', bygroups(Punctuation, Generic.Deleted, Punctuation)),
-            (r'(\{>>)([^\n]+?)(<<\})', bygroups(Punctuation, Comment, Punctuation)),
             (r'(\{%)(.*?)(%\})', bygroups(Comment.Preproc, Comment, Comment.Preproc)),
 
             # An inline footnote carries content; a reference carries a label.
