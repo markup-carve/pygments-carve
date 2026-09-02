@@ -26,16 +26,17 @@ Deleting a rule AND its pin together still passes, and that is deliberate: the
 diff then shows a pin being removed, which is a reviewable act. What this gate
 ends is deletion that nothing anywhere records.
 
-THE THREE RULES THE SHARED INVENTORY DOES NOT NAME. Arrows, the ellipsis and the
-mirrored `*/x/*` nesting have no entry in carve-grammars' inventory, so no sweep
-on any surface tests them. They are pinned here rather than dropped, because
-they are real Carve: corpus `20-smart-typography-arrows-and-symbols` renders
-`-->` as an arrow and `15-heading-ids-4` renders `...` as an ellipsis, and all
-three sibling grammars scope them - TextMate in one `smart_typography` pattern
-of thirteen alternatives. The inventory names that construct but pins a single
-sample, `a -- b`, so twelve of the thirteen are untested on every surface in the
-org. That is an upstream gap, reported as markup-carve/carve-grammars#373, not
-something to fix by editing a list this repo reads in place.
+WHAT A PER-RULE PIN CANNOT SEE. One pin per rule proves the rule undeletable; it
+says nothing about a rule's ALTERNATION. The four typography rules hold nineteen
+alternatives between them, and the arrow pin below exercises one of nine - which
+is how `<->` came to be scoped as `<-` plus a stray `>`, and `<=`, `>=`, `!=`
+and `+-` to be absent, with every gate green (markup-carve/pygments-carve#28).
+`tests/test_typography.py` is the gate for that: it reads the alternatives out
+of the spec grammar and requires each one to be load-bearing. The upstream half
+was carve-grammars#373, fixed by carve-grammars#377.
+
+The mirrored `*/x/*` nesting still has no entry in carve-grammars' inventory, so
+it is pinned here rather than dropped.
 
 A FOURTH used to sit beside them and no longer does. `{>>...<<}` is
 CriticMarkup's own spelling, not Carve's, and the rule for it was removed in
@@ -170,14 +171,17 @@ PINS = [
         [(Name.Variable.Magic, '@user')]),
     Pin('tag', 'a #tag b',
         [(Name.Variable.Instance, '#tag')]),
-    Pin('arrow', 'a -> b',
+    Pin('arrow and comparison', 'a -> b',
         [(Operator, '->')],
-        note='Unnamed upstream: the inventory pins only the en dash.'),
+        note='One rule, nineteen alternatives across four; a per-rule pin '
+             'cannot see one going missing. tests/test_typography.py is what '
+             'holds the alternation down.'),
     Pin('en dash', 'a -- b',
         [(Punctuation, '--')]),
     Pin('ellipsis', 'a ... b',
-        [(Punctuation, '...')],
-        note='Unnamed upstream: the inventory pins only the en dash.'),
+        [(Punctuation, '...')]),
+    Pin('typographic symbol', 'a (c) b',
+        [(Name.Constant, '(c)')]),
 ]
 
 
@@ -205,7 +209,7 @@ def test_the_reading_matches_what_pygments_compiled():
     """The source reading must find the rules Pygments actually compiled.
 
     Every test below mutates the SOURCE. A reader that finds forty of
-    forty-five rules would mutate the wrong lines and pin a shorter list, so the
+    forty-six rules would mutate the wrong lines and pin a shorter list, so the
     reading is checked against the compiled state rather than assumed.
     """
     compiled = rule_patterns(LEXER)
@@ -255,7 +259,7 @@ def test_pin_is_sharp(index):
     """Deleting the rule must stop its pin from holding.
 
     THE GATE PROVING IT CAN SAY NO. Without this, the pins above are a claim;
-    with it, every one of the 45 rules is known to be undeletable in silence.
+    with it, every one of the 46 rules is known to be undeletable in silence.
     """
     assert index < len(RULES), 'no rule %d to delete; see the pin count' % index
     pin = PINS[index]

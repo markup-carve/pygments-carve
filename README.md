@@ -48,9 +48,12 @@ Inline: the emphasis families in Carve's spelling plus their braced forced
 forms, code and inline literals, math, links, images, spans, attributes,
 footnotes and inline footnotes, citations, cross-references, autolinks,
 extensions (`:name[...]`), symbols, code callouts, mentions, tags, escapes,
-hard breaks, and the dash, arrow and ellipsis runs of smart typography - though
-not yet all of that family: `<=`, `>=`, `!=` and `+-` are not scoped, and `<->`
-only partly (markup-carve/pygments-carve#28).
+hard breaks, and smart typography - all nineteen alternatives the spec grammar
+names under `arrow`, `comparison` and `typographic_symbol` plus the dash and
+ellipsis runs, which is the set Prism and highlight.js carry. Two productions of
+`smart_typography` are not scoped and are named as such in
+`tests/test_typography.py`: `smart_quote`, which is per-character contextual
+substitution rather than a run, and the braced en dash `{--}`.
 
 ## Deliberate limits
 
@@ -95,7 +98,7 @@ The suites, and the split matters:
   `carve-grammars/tests/lib/constructs.js`, so there is no local copy to fall
   behind it; `tests/inventory.py` is the reader and `test_inventory.py` is what
   stops it silently returning a short list.
-- **`test_inline_rules.py`** records, for every one of the 45 rules in the
+- **`test_inline_rules.py`** records, for every one of the 46 rules in the
   inline state, a sample and the whole run of tokens the lexer colours in it -
   the delimiters included, because a same-type fallback gets those wrong and the
   payload's type right. Then it deletes each rule from the lexer source,
@@ -103,6 +106,14 @@ The suites, and the split matters:
   sharp from inside the suite rather than asserted. Before it, sixteen of those
   rules could be deleted outright with the suite green
   (markup-carve/pygments-carve#25).
+- **`test_typography.py`** reads the `arrow`, `comparison` and
+  `typographic_symbol` productions out of `spec/resources/grammar.ebnf` in
+  place, requires every alternative to be scoped as ONE token holding exactly
+  that run, and then removes each `|` branch from the lexer in turn and requires
+  an assertion to break. A per-rule pin cannot see an alternation shrink - the
+  arrow rule was pinned by `a -> b` while `<->` scoped as `<-` plus a stray `>`
+  (markup-carve/pygments-carve#28) - and reading the set from the spec means an
+  alternative the language gains is measured the day the pin brings it in.
 - **`test_comment_fence.py`** pins which SOURCE LINES the lexer treats as
   commented out, and asks the corpus the one question a comment answers: a
   comment renders nothing, so no word the expected HTML puts in front of a
