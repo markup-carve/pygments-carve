@@ -5,6 +5,11 @@ emits every character as ``Token.Text`` passes that, and passes a zero-Error
 check over the whole corpus too, while highlighting nothing. So the measure here
 is per construct: the payload that construct exists to demonstrate must land in
 a token whose type is not plain text.
+
+That is a floor, not a ceiling. "Not plain text" cannot say WHICH rule did the
+colouring, so it does not stop a rule from being deleted;
+``test_inline_rules.py`` carries that, and it shares ``UNSCOPED`` below so the
+two agree on what "scoped" means.
 """
 
 import os

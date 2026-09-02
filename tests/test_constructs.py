@@ -16,6 +16,15 @@ NOT_COVERED is an allowlist, not a skip list. An entry needs a reason, and an
 entry that starts passing FAILS the suite - so a gap that gets fixed cannot sit
 here pretending to still be a gap, and the file stays an honest ledger rather
 than a place to bury misses.
+
+WHAT THIS SWEEP DOES NOT MEASURE, so nobody leans on it for it. It asks only
+that the payload carries SOME non-text token. Any non-text token satisfies that,
+which means it cannot tell a construct's own rule from a neighbouring rule that
+happens to catch the same payload: sixteen of the forty-six rules in the inline
+state could be deleted with this sweep - and the whole suite - still green
+(markup-carve/pygments-carve#25). Its job is cross-surface parity, that a
+construct covered on Prism or TextMate is not quietly missing here. Rules are
+held down by `test_inline_rules.py`, which records the whole scoped run.
 """
 
 import pytest
