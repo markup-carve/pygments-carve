@@ -120,7 +120,7 @@ _MARKER_RUN = r'(?:' + _MARKER + r'[ \t]+)*'
 #: ordinary content and is emitted as ONE token - without this every content
 #: character becomes its own token, which is both noisy and unusable to a
 #: consumer asking whether a phrase carries a scope.
-_INLINE_STARTERS = r'\\%!`${[^<:@#*/_~=.\-'
+_INLINE_STARTERS = r'\\%!`${[^<>:@#*/_~=.\-(+'
 
 
 def _plain_run(extra=''):
@@ -466,18 +466,40 @@ class CarveLexer(RegexLexer):
             (r'(/)(\S(?:[^\n]*?\S)?)(/)', bygroups(Punctuation, Generic.Emph, Punctuation)),
             (r'(_)(\S(?:[^\n]*?\S)?)(_)', bygroups(Punctuation, Generic.Underline, Punctuation)),
             (r'(~)(\S(?:[^\n]*?\S)?)(~)', bygroups(Punctuation, Generic.Deleted, Punctuation)),
-            (r'(=)(\S(?:[^\n]*?\S)?)(=)', bygroups(Punctuation, Generic.Inserted, Punctuation)),
+            # A bare `=` carrying a comparison or an arrow tail on its left is
+            # not a highlight delimiter: PART 9's inline precedence excepts "a
+            # delimiter that begins a multi-char smart-typography pattern ...
+            # the pattern is consumed first". `< > !` is every character the
+            # language puts in front of a `=` to make one.
+            #
+            # BOTH ends are guarded, one more than Prism, whose closer is
+            # unguarded. The engine guards both: `x =y z<= w` renders
+            # `x =y z≤ w`, no mark at all. Nothing is guarded on the RIGHT,
+            # also from the engine - `=>` is not an arrow any more, so
+            # `a =foo=> b` marks `foo` and `a =>foo= b` marks `>foo`.
+            (r'(?<![<>!])(=)(\S(?:[^\n]*?\S)?)(?<![<>!])(=)',
+             bygroups(Punctuation, Generic.Inserted, Punctuation)),
 
             # A mention and a tag, each one token: the sigil is part of the name
             # rather than punctuation beside it.
             (r'(?<![\w/])@[\w][\w.-]*', Name.Variable.Magic),
             (r'(?<![\w&])\#[\w][\w-]*', Name.Variable.Instance),
 
-            # Typographic runs, longest first: an arrow is not an en dash plus a
-            # stray angle bracket, and `---` is not `--` plus `-`.
-            (r'<-->|<==>|<=>|-->|<--|==>|<==|->|<-', Operator),
+            # Smart typography: the spec grammar's `arrow`, `comparison` and
+            # `typographic_symbol` plus the dash and ellipsis runs. Nineteen
+            # alternatives, the set Prism and highlight.js carry.
+            #
+            # Longest first, or a shorter alternative that prefixes a longer one
+            # wins: `<->` before `<-`, `<==` before `<=`. `<==>` is deliberately
+            # NOT one of them - it is `<==` and then a literal `>`, rendering
+            # `⇐>`, and matching it whole was an over-colour.
+            (r'<-->|<--|-->|<=>|<==|==>|<->|<-|->|!=|<=|>=', Operator),
             (r'(?<!-)---(?!-)|(?<!-)--(?!-)', Punctuation),
             (r'\.\.\.', Punctuation),
+            # `(c) (r) (tm) +-` render fixed characters, the same kind of thing
+            # the `:name:` shortcode above produces, so they share its type.
+            # Lowercase only: `(C)` and `(TM)` stay literal.
+            (r'\(c\)|\(r\)|\(tm\)|\+-', Name.Constant),
         ],
 
         'inlinefootnote': [
