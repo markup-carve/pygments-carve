@@ -174,8 +174,14 @@ class CarveLexer(RegexLexer):
             # (every line up to the closer carries the opener's indent or is
             # blank; a line further left has left the container, so a closer
             # past it belongs to no open fence) into the search for the closer.
+            #
+            # The `(?!\2)` on the blank alternative is not decoration. Without
+            # it both alternatives match a whitespace-only line whenever the
+            # opener is at column 0, and an opener with no closer then
+            # backtracks exponentially: 22 such lines took 0.8s, and each
+            # further line doubles it.
             (r'^(\ufeff?)([ \t]*)(%%%+)([^\n]*)(\n)'
-             r'((?:\2[^\n]*\n|[ \t]*\n)*?)'
+             r'((?:\2[^\n]*\n|(?!\2)[ \t]*\n)*?)'
              r'(\2)(\3)(?!%)([^\n]*)$',
              bygroups(Text, Text, Comment.Preproc, Comment, Text,
                       Comment, Text, Comment.Preproc, Comment)),

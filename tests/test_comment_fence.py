@@ -34,6 +34,7 @@ the fix would not have closed it.
 
 import collections
 import pathlib
+import time
 
 import pytest
 
@@ -242,6 +243,24 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
         '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-7.crv',
         '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-8.crv',
     ]), hits
+
+
+def test_an_unterminated_fence_over_blank_lines_stays_linear():
+    """The body alternatives must not both match the same line.
+
+    They did in the first cut of this rule: with the opener at column 0 the
+    indent backreference is empty, so `\\2[^\\n]*\\n` and `[ \\t]*\\n` both matched a
+    whitespace-only line, and an opener with no closer explored every split of
+    them. Cost doubled per line - 22 lines took 0.8s, 30 lines did not finish.
+
+    The ceiling below is not a stopwatch margin on a fast run. At 40 lines the
+    ambiguous form is 2**18 times the 22-line cost, which is days; a machine
+    under any load either finishes this in milliseconds or does not finish.
+    """
+    start = time.perf_counter()
+    tokens = list(LEXER.get_tokens('%%%\n' + ' \n' * 40 + 'after\n'))
+    assert time.perf_counter() - start < 5
+    assert (Comment.Preproc, '%%') in [(t, v) for t, v in tokens]
 
 
 # ----------------------------------------------------------------------------
