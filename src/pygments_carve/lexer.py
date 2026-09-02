@@ -102,6 +102,20 @@ def _label(depth=3):
 _LABEL = _label()
 
 
+#: A run of block markers a line may carry before its content: bullets, ordered
+#: markers and quote markers, in any nesting. A definition written after one is
+#: still a definition (`- [t]: /t`), so the definition rules take this prefix
+#: rather than losing the line to the marker rules below them.
+_MARKER = (
+    r'(?:'
+    r'>+'
+    r'|(?:\d+|[A-Za-z]+)[.)](?:' + _ATTRS + r')?'
+    r'|[-*+.](?:' + _ATTRS + r')?'
+    r')'
+)
+_MARKER_RUN = r'(?:' + _MARKER + r'[ \t]+)*'
+
+
 #: Characters that can begin an inline construct. A run of anything else is
 #: ordinary content and is emitted as ONE token - without this every content
 #: character becomes its own token, which is both noisy and unusable to a
@@ -183,12 +197,28 @@ class CarveLexer(RegexLexer):
             # Definition markers: footnote, link reference, abbreviation. The
             # separator after the colon must START WITH A LITERAL SPACE - a
             # tab-first separator makes the line an ordinary paragraph.
-            (r'^(' + _MARGIN + r')(\[\^)([^\]\n]+)(\]:)( )',
-             bygroups(Text, Punctuation, Name.Label, Punctuation, Text), 'inline'),
+            #
+            # A leading marker run is part of the shape: a definition is a
+            # definition on `- [t]: /t` too, and the corpus resolves the call in
+            # those documents. A marker line that instead folds into an open
+            # paragraph is over-coloured here, the same way an indented block
+            # opener is - telling the two apart needs the container model this
+            # lexer deliberately does not carry. The body runs in `defbody`
+            # rather than `inline`,
+            # because `inline` has no pop rule - `block` includes it, so a pop
+            # there would pop the root state - and an unpopped body swallows
+            # every block construct in the rest of the document.
+            (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\[\^)([^\]\n]+)(\]:)( )',
+             bygroups(Text, using(this, state='markerrun'), Punctuation, Name.Label,
+                      Punctuation, Text), 'defbody'),
+            # No marker run on the abbreviation form: an abbreviation is defined
+            # at document level only, so `- *[HTML]: ...` and `> *[HTML]: ...`
+            # are paragraph text (corpus 179, 180).
             (r'^(' + _MARGIN + r')(\*\[)([^\]\n]+)(\]:)( )',
-             bygroups(Text, Punctuation, Name.Entity, Punctuation, Text), 'inline'),
-            (r'^(' + _MARGIN + r')(\[)([^\]\n]+)(\]:)( )',
-             bygroups(Text, Punctuation, Name.Label, Punctuation, Text), 'linkdest'),
+             bygroups(Text, Punctuation, Name.Entity, Punctuation, Text), 'defbody'),
+            (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\[)([^\]\n]+)(\]:)( )',
+             bygroups(Text, using(this, state='markerrun'), Punctuation, Name.Label,
+                      Punctuation, Text), 'linkdest'),
 
             # A definition-list term (`::`) and its definition (`:`).
             (r'^(' + _MARGIN + r')(::)([ \t]+)', bygroups(Text, Punctuation, Text), 'heading'),
@@ -291,6 +321,22 @@ class CarveLexer(RegexLexer):
             include('inlinecontent'),
             (_plain_run(r'|'), Text),
             (r'[^\n|]', Text),
+        ],
+
+        # The marker run a definition line may carry, tokenized the way the
+        # marker rules in `block` tokenize the same markers on their own.
+        'markerrun': [
+            (r'(?:\d+|[A-Za-z]+)[.)](?:' + _ATTRS + r')?', Number.Integer),
+            (r'\.(?:' + _ATTRS + r')?', Number.Integer),
+            (r'[-*+](?:' + _ATTRS + r')?', Punctuation),
+            (r'>+', Punctuation),
+            (r'[ \t]+', Text),
+        ],
+
+        # A definition's body: inline content that ends with its line.
+        'defbody': [
+            (r'$', Text, '#pop'),
+            include('inline'),
         ],
 
         'linkdest': [
