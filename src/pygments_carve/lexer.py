@@ -159,10 +159,32 @@ class CarveLexer(RegexLexer):
             (r'\A(\ufeff?)(---)([a-zA-Z][\w-]*)?([ \t]*\n)',
              bygroups(Text, Punctuation, Keyword.Type, Text), 'frontmatter'),
 
-            # A comment fence (`%%%` or longer) versus a one-line comment. The
-            # fence has to be tried first: `%%%` also matches the one-line form.
-            (r'^' + _MARGIN + r'(%%%+)([^\n]*)(\n)',
-             bygroups(Comment.Preproc, Comment, Text), 'commentfence'),
+            # A comment fence is matched WHOLE - opener, body and closer in
+            # one rule - and the one-line comment follows it, because `%%%`
+            # also matches the line form.
+            #
+            # Whole is what makes an UNTERMINATED opener fall through to the
+            # line form, which is the rule: an opener with no matching closer
+            # ahead "does NOT open a block. The line degrades to a
+            # `comment_line`." A separate state cannot decide that - it has
+            # already been entered by the time the input runs out
+            # (markup-carve/pygments-carve#30). It is also the only shape that
+            # can carry the opener's own WIDTH (`%%%%` closes on `%%%%` alone,
+            # which is how a comment nests a shorter fence) and its COLUMN
+            # (every line up to the closer carries the opener's indent or is
+            # blank; a line further left has left the container, so a closer
+            # past it belongs to no open fence) into the search for the closer.
+            #
+            # The `(?!\2)` on the blank alternative is not decoration. Without
+            # it both alternatives match a whitespace-only line whenever the
+            # opener is at column 0, and an opener with no closer then
+            # backtracks exponentially: 22 such lines took 0.8s, and each
+            # further line doubles it.
+            (r'^(\ufeff?)([ \t]*)(%%%+)([^\n]*)(\n)'
+             r'((?:\2[^\n]*\n|(?!\2)[ \t]*\n)*?)'
+             r'(\2)(\3)(?!%)([^\n]*)$',
+             bygroups(Text, Text, Comment.Preproc, Comment, Text,
+                      Comment, Text, Comment.Preproc, Comment)),
             (r'^' + _MARGIN + r'(%%)([^\n]*)$', bygroups(Comment.Preproc, Comment)),
 
             # A raw block: the `=FORMAT` info string routes the payload to that
@@ -262,11 +284,6 @@ class CarveLexer(RegexLexer):
         'frontmatter': [
             (r'^(---)([ \t]*)$', bygroups(Punctuation, Text), '#pop'),
             (r'[^\n]+\n?', Comment.Special),
-        ],
-
-        'commentfence': [
-            (r'^[ \t]*(%%%+)([ \t]*)$', bygroups(Comment.Preproc, Text), '#pop'),
-            (r'[^\n]+\n?', Comment),
         ],
 
         # A fence body is opaque: nothing inside it is Carve. The closer must be

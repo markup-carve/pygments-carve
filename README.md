@@ -62,9 +62,14 @@ same trade-off the Prism and highlight.js grammars make (match at any indent,
 over-colour the rare invalid case) so the three surfaces agree; the TextMate
 grammar in carve-grammars is the surface that makes the distinction.
 
-**A fence closes on any fence run of three or more.** The spec requires the
-closer to be at least as long as the opener, and a Pygments state cannot carry
-the opener's width.
+**A code fence's body is not scoped at all.** The `codeblock` state has no rule
+that matches a bare newline, so Pygments resets the state stack at the end of
+the opener line: `# x` inside a ```` ```python ```` block is scoped as a
+heading, and no corpus document produces a fence-body token
+(markup-carve/pygments-carve#32). The comment fence is not in that shape - it is
+matched whole, opener to closer, in one rule, which is what lets it require the
+exact-width closer the spec asks for at the opener's own column and degrade to
+the line form when there is none.
 
 **An attribute block is one token.** `{#id .cls key="v"}` is emitted whole as
 `Name.Attribute` rather than split into parts, matching how the sibling grammars
@@ -98,6 +103,17 @@ The suites, and the split matters:
   sharp from inside the suite rather than asserted. Before it, sixteen of those
   rules could be deleted outright with the suite green
   (markup-carve/pygments-carve#25).
+- **`test_comment_fence.py`** pins which SOURCE LINES the lexer treats as
+  commented out, and asks the corpus the one question a comment answers: a
+  comment renders nothing, so no word the expected HTML puts in front of a
+  reader may sit on a line the lexer scopes entirely as a comment. That reads a
+  property out of the source/HTML pair without anyone naming a construct, the
+  way the definition gate does. It reports zero across the corpus; against the
+  rule shape that shipped markup-carve/pygments-carve#30 it reports eight
+  documents, and the suite pins that number too, so the zero is known to be a
+  measurement rather than a silence. The pins are proved sharp against two
+  mutants, because deleting a rule can only test what a rule does and four of
+  these pins say the fence must REFUSE to open.
 - **`test_corpus.py`** lexes every document of the spec corpus and asserts that
   the definitions the corpus pins are scoped as definitions. A corpus case is a
   source next to the HTML it renders to, so the pair says which lines are
