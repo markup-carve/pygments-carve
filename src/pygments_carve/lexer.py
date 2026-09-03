@@ -600,14 +600,49 @@ class CarveLexer(RegexLexer):
             # An attribute block attached to the construct before it.
             (_ATTRS, Name.Attribute),
 
-            # Bare emphasis delimiters. Carve's bare set is / * _ ~ = and each
-            # needs a non-space inner boundary so `a / b` stays literal.
-            (r'(/\*)([^\n]+?)(\*/)', bygroups(Punctuation, Generic.Strong, Punctuation)),
-            (r'(\*/)([^\n]+?)(/\*)', bygroups(Punctuation, Generic.Strong, Punctuation)),
-            (r'(\*)(\S(?:[^\n]*?\S)?)(\*)', bygroups(Punctuation, Generic.Strong, Punctuation)),
-            (r'(/)(\S(?:[^\n]*?\S)?)(/)', bygroups(Punctuation, Generic.Emph, Punctuation)),
-            (r'(_)(\S(?:[^\n]*?\S)?)(_)', bygroups(Punctuation, Generic.Underline, Punctuation)),
-            (r'(~)(\S(?:[^\n]*?\S)?)(~)', bygroups(Punctuation, Generic.Deleted, Punctuation)),
+            # Bare emphasis delimiters, each carrying the word-boundary guards
+            # the grammar states for it. "No bare delimiter emphasizes
+            # intraword; the forced `{X ... X}` family is the deliberate
+            # intraword escape hatch", and the guards are what say so:
+            #
+            #     bare_opener(d) = <!(alnum | '_' | d | slash_if(d)), d, !(ws | d)
+            #     bare_closer(d) = <&(non_ws), d, !(alnum)
+            #
+            # spelled here as `(?<![\w<d>])` before the opener, `(?!<d>)` after
+            # it, and `(?![^\W_])` after the closer - `\w` being alnum and `_`
+            # together, and `[^\W_]` alnum alone, because a `_` AFTER a closer
+            # is allowed and one BEFORE an opener is not. The two inner
+            # non-space boundaries were already there, in the `\S` at each end
+            # of the content.
+            #
+            # `slash_if(d)` adds `/` to the opener's lookbehind for `/` and `_`
+            # only - path protection, `/a/_b_` and `snake_/case/` - which for
+            # `/` coincides with same-delimiter adjacency. `*`, `~` and `=` are
+            # NOT guarded against a preceding `/`, so `a/~y~` is a strike.
+            #
+            # WITHOUT THEM ANY NON-SPACE RUN BETWEEN TWO DELIMITERS WAS
+            # EMPHASIS, wherever it sat: 16 corpus documents carried a run the
+            # lexer scoped whose delimiters SURVIVE into the expected HTML,
+            # which is the corpus saying no span was opened there. The clearest
+            # was a document whose own sentence is the assertion - "Dates like
+            # 1/2/2024 stay literal" - with `/2/` scoped as emphasis
+            # (markup-carve/pygments-carve#36).
+            #
+            # The combined `/*` opener is guarded on its OUTER `/`, which is
+            # where the grammar puts it: "the boundary guards apply to the
+            # OUTER `/`; the inner `*` is part of the two-char token".
+            (r'(?<![\w/])(/\*)([^\n]+?)(\*/)(?![^\W_])',
+             bygroups(Punctuation, Generic.Strong, Punctuation)),
+            (r'(?<![\w*])(\*/)([^\n]+?)(/\*)(?![^\W_])',
+             bygroups(Punctuation, Generic.Strong, Punctuation)),
+            (r'(?<![\w*])(\*)(?!\*)(\S(?:[^\n]*?\S)?)(\*)(?![^\W_])',
+             bygroups(Punctuation, Generic.Strong, Punctuation)),
+            (r'(?<![\w/])(/)(?!/)(\S(?:[^\n]*?\S)?)(/)(?![^\W_])',
+             bygroups(Punctuation, Generic.Emph, Punctuation)),
+            (r'(?<![\w/])(_)(?!_)(\S(?:[^\n]*?\S)?)(_)(?![^\W_])',
+             bygroups(Punctuation, Generic.Underline, Punctuation)),
+            (r'(?<![\w~])(~)(?!~)(\S(?:[^\n]*?\S)?)(~)(?![^\W_])',
+             bygroups(Punctuation, Generic.Deleted, Punctuation)),
             # A bare `=` carrying a comparison or an arrow tail on its left is
             # not a highlight delimiter: PART 9's inline precedence excepts "a
             # delimiter that begins a multi-char smart-typography pattern ...
@@ -619,7 +654,7 @@ class CarveLexer(RegexLexer):
             # `x =y z≤ w`, no mark at all. Nothing is guarded on the RIGHT,
             # also from the engine - `=>` is not an arrow any more, so
             # `a =foo=> b` marks `foo` and `a =>foo= b` marks `>foo`.
-            (r'(?<![<>!])(=)(\S(?:[^\n]*?\S)?)(?<![<>!])(=)',
+            (r'(?<![\w=<>!])(=)(?!=)(\S(?:[^\n]*?\S)?)(?<![<>!])(=)(?![^\W_])',
              bygroups(Punctuation, Generic.Inserted, Punctuation)),
 
             # A mention and a tag, each one token: the sigil is part of the name
