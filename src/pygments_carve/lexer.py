@@ -170,6 +170,26 @@ class CarveLexer(RegexLexer):
     # `::: NOTE` is not the `note` admonition.
     flags = re.MULTILINE
 
+    def __init__(self, **options):
+        # WHY THE TWO PYGMENTS DEFAULTS ARE TURNED OFF. `Lexer` strips leading
+        # and trailing newlines from a document and appends one if it is
+        # missing. Both are reasonable for a programming language and neither
+        # is for Carve, where whitespace is syntax: a fence "keeps the blank
+        # line at the end of its content", and the spec is explicit that "zero
+        # payload lines contribute nothing; one blank payload line contributes
+        # one newline. An implementation MUST NOT encode those two source
+        # shapes identically." Stripping a LEADING newline would move every
+        # line of the document, and appending a trailing one invents a line the
+        # author did not write. With them on, three corpus documents came out
+        # of `get_tokens` shorter than they went in
+        # (markup-carve/pygments-carve#33).
+        #
+        # `setdefault`, not assignment: a caller who asks for the Pygments
+        # behaviour still gets it.
+        options.setdefault('stripnl', False)
+        options.setdefault('ensurenl', False)
+        super().__init__(**options)
+
     tokens = {
         'root': [
             include('block'),
@@ -223,7 +243,13 @@ class CarveLexer(RegexLexer):
              r'(\2)(\3)(?!%)([^\n]*)$',
              bygroups(Text, Text, Comment.Preproc, Comment, Text,
                       Comment, Text, Comment.Preproc, Comment)),
-            (r'^' + _MARGIN + r'(%%)([^\n]*)$', bygroups(Comment.Preproc, Comment)),
+            # The MARGIN IS CAPTURED, like every other block rule's. `bygroups`
+            # emits only the groups it is given, so a margin the pattern consumes
+            # outside one reaches no token at all and the lexer stops reproducing
+            # its input - which it did in 30 corpus documents
+            # (markup-carve/pygments-carve#33).
+            (r'^(' + _MARGIN + r')(%%)([^\n]*)$',
+             bygroups(Text, Comment.Preproc, Comment)),
 
             # A code or raw fence is matched WHOLE - opener, body and closer in
             # one rule - and the lone-fence line follows the pair, because an

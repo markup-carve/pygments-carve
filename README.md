@@ -82,6 +82,13 @@ block at all and the corpus renders it as a paragraph. Nor does a body longer
 than 512 lines; that bound is what keeps a file of openers that can never pair
 from costing a scan of the document per line.
 
+**Pygments' `stripnl` and `ensurenl` are off.** They strip a document's leading
+and trailing newlines and append one that is not there, which is reasonable for
+a programming language and not for Carve: a fence keeps the blank line at the end
+of its content, and the spec forbids encoding a blank payload line and no payload
+line identically. A caller who wants the Pygments behavior can still pass either
+option (markup-carve/pygments-carve#33).
+
 **An attribute block is one token.** `{#id .cls key="v"}` is emitted whole as
 `Name.Attribute` rather than split into parts, matching how the sibling grammars
 treat it.
@@ -147,6 +154,16 @@ The suites, and the split matters:
   opener that never finds one scans ahead, so the growth ratio on a file of
   unpairable openers is asserted to stay under the value carve-grammars'
   `scan-superlinear.mjs` calls a finding.
+- **`test_round_trip.py`** asserts, for every corpus document, that the
+  concatenated token values are the source. A character in no token reaches no
+  consumer - an HTML formatter reassembles a document from these - and no scope
+  assertion can see it, because a character with no token has no scope to be
+  wrong about. It reported 31 documents against the lexer as it stood before
+  markup-carve/pygments-carve#33, 28 of them from a `_MARGIN` matched outside
+  its capture group under `bygroups` and 3 from the two Pygments defaults; the
+  suite pins that split. It also deletes each rule of the block state in turn
+  and requires the property to survive every deletion, which is what says the
+  defect was one rule rather than a habit spread through the state.
 - **`test_corpus.py`** lexes every document of the spec corpus and asserts that
   the definitions the corpus pins are scoped as definitions. A corpus case is a
   source next to the HTML it renders to, so the pair says which lines are
