@@ -34,7 +34,7 @@ import pathlib
 
 import pytest
 
-from pygments.token import Generic
+from pygments.token import Generic, Punctuation, Text
 
 from pygments_carve import CarveLexer
 
@@ -107,6 +107,7 @@ REFUSED = [
     # either side, so one doubled sample exercises both.
     ('a doubled delimiter never opens', '**a* y', '*a'),
     ('a doubled highlight run', '==doubled= y', '=doubled'),
+    ('the same delimiter after an underline opener', '__a_ y', '_a'),
     ('an alnum after the closer', 'a ~b~c d', 'b'),
     ('a doubled strike run', 'a ~~b~ c', '~b'),
 ]
@@ -142,6 +143,26 @@ def test_the_guard_is_what_refuses_it(name, source, run):
 @pytest.mark.parametrize('source,run', ACCEPTED, ids=lambda v: None)
 def test_the_valid_shape_is_still_emphasis(source, run):
     assert _emphasized(LEXER, source, run), source
+
+
+def test_the_combined_opener_is_guarded_on_its_outer_slash():
+    """`a/*b*/` is not bold-italic, and the token run is where that shows.
+
+    The grammar puts the guards on the OUTER `/` of the two-character opener, so
+    a `/` behind an alnum does not open one. What follows is not an
+    under-colour: `*` is deliberately NOT guarded against a preceding slash, so
+    the plain strong rule takes `*b*` and the slashes stay text. The two
+    readings give `b` the same TYPE and differ only in their delimiters, which
+    is why this reads the run rather than asking whether `b` is emphasized.
+    """
+    delimiters = ('/*', '*/', '*', '/')
+    assert [(t, v) for t, v in LEXER.get_tokens('a/*b*/ c') if v in delimiters] == [
+        (Text, '/'), (Punctuation, '*'), (Punctuation, '*'), (Text, '/')]
+    assert [(t, v) for t, v in UNGUARDED.get_tokens('a/*b*/ c') if v in delimiters] == [
+        (Punctuation, '/*'), (Punctuation, '*/')]
+    # The unguarded form of the same opener is still taken where it is valid.
+    assert [(t, v) for t, v in LEXER.get_tokens('a /*b*/ c') if v in ('/*', '*/')] == [
+        (Punctuation, '/*'), (Punctuation, '*/')]
 
 
 def test_a_forced_span_bypasses_both_guards():
