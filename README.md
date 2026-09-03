@@ -89,6 +89,13 @@ of its content, and the spec forbids encoding a blank payload line and no payloa
 line identically. A caller who wants the Pygments behavior can still pass either
 option (markup-carve/pygments-carve#33).
 
+**A `=` run is closed by the nearest guarded delimiter, not by a delimiter
+stack.** The word-boundary guards the grammar states for the bare set are
+carried on both ends, but the run resolution behind them is not: this lexer has
+no delimiter-stack model, so `a =f=>g= b` marks `f=>g` where the engine marks
+`f`. Pinned in `test_bare_emphasis.py` so it cannot drift into something else
+(markup-carve/pygments-carve#36).
+
 **An attribute block is one token.** `{#id .cls key="v"}` is emitted whole as
 `Name.Attribute` rather than split into parts, matching how the sibling grammars
 treat it.
@@ -164,6 +171,14 @@ The suites, and the split matters:
   suite pins that split. It also deletes each rule of the block state in turn
   and requires the property to survive every deletion, which is what says the
   defect was one rule rather than a habit spread through the state.
+- **`test_bare_emphasis.py`** asks the corpus the one question a bare emphasis
+  delimiter answers: a delimiter that opens a span is consumed, so a run the
+  lexer scopes whose delimiters SURVIVE into the expected HTML is a span the
+  corpus did not open. It reports zero across the corpus; against the rules as
+  they stood before markup-carve/pygments-carve#36 it reports 16 named
+  documents, so the zero is a measurement rather than a silence. The per-guard
+  pins are proved against those unguarded rules rather than against a deletion,
+  because deleting a rule removes an over-colour instead of producing one.
 - **`test_corpus.py`** lexes every document of the spec corpus and asserts that
   the definitions the corpus pins are scoped as definitions. A corpus case is a
   source next to the HTML it renders to, so the pair says which lines are
