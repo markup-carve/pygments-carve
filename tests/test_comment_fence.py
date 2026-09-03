@@ -164,7 +164,7 @@ def _regression_source():
     first, past, _ = rules[FENCE_RULE]
     lines = SOURCE.split('\n')
     out = '\n'.join(lines[:first]) + '\n' + _REGRESSION_OPENER + '\n'.join(lines[past:])
-    anchor = "        'codeblock': ["
+    anchor = "        'fencebody': ["
     assert anchor in out, 'no anchor to re-insert the commentfence state before'
     return out.replace(anchor, _REGRESSION_STATE + anchor, 1)
 

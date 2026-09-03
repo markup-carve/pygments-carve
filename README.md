@@ -65,14 +65,22 @@ same trade-off the Prism and highlight.js grammars make (match at any indent,
 over-colour the rare invalid case) so the three surfaces agree; the TextMate
 grammar in carve-grammars is the surface that makes the distinction.
 
-**A code fence's body is not scoped at all.** The `codeblock` state has no rule
-that matches a bare newline, so Pygments resets the state stack at the end of
-the opener line: `# x` inside a ```` ```python ```` block is scoped as a
-heading, and no corpus document produces a fence-body token
-(markup-carve/pygments-carve#32). The comment fence is not in that shape - it is
-matched whole, opener to closer, in one rule, which is what lets it require the
-exact-width closer the spec asks for at the opener's own column and degrade to
-the line form when there is none.
+**A fence is matched whole, and an unpaired opener claims nothing.** A code
+fence, a raw block, front matter and a comment fence are each matched by ONE
+rule spanning opener, body and closer, because a Pygments state cannot hold a
+body: the stack resets at every newline no rule matches, so a state pushed on
+the opener's newline is abandoned before one body character is read
+(markup-carve/pygments-carve#32). Whole is also what carries the opener's width,
+character and column into the search for its closer. The trade is at the other
+end: an opener with no closer ahead really does open a code block that runs to
+the end of what encloses it, and here it colours its own line and claims nothing
+under it - the reading the line-based sibling grammars take, because a body that
+ran to end of input inside a container would swallow the container's own closer
+and every block after it. An opener whose info string is outside the three
+shapes the grammar admits does not pair either, because such a line opens no
+block at all and the corpus renders it as a paragraph. Nor does a body longer
+than 512 lines; that bound is what keeps a file of openers that can never pair
+from costing a scan of the document per line.
 
 **An attribute block is one token.** `{#id .cls key="v"}` is emitted whole as
 `Name.Attribute` rather than split into parts, matching how the sibling grammars
@@ -125,6 +133,20 @@ The suites, and the split matters:
   measurement rather than a silence. The pins are proved sharp against two
   mutants, because deleting a rule can only test what a rule does and four of
   these pins say the fence must REFUSE to open.
+- **`test_lexer_states.py`** asserts, of every state a rule PUSHES, that some
+  rule in it matches a bare newline - by consuming it, or by popping at `$`
+  before it. A state in neither shape is abandoned at the end of every line,
+  which is how `codeblock` came to never run at all and `frontmatter` came to
+  escape at its first blank line (markup-carve/pygments-carve#32). The gate is
+  mechanical: it names no construct and holds for a state added tomorrow.
+- **`test_fence_body.py`** pairs the fences in every corpus document by the
+  grammar's own closer rule and requires every character between a pair to carry
+  a verbatim scope. It reports zero across the corpus; against the rule shape
+  that shipped markup-carve/pygments-carve#32 it reports 71 documents, and the
+  suite pins that number too. It also holds the cost of requiring a closer: an
+  opener that never finds one scans ahead, so the growth ratio on a file of
+  unpairable openers is asserted to stay under the value carve-grammars'
+  `scan-superlinear.mjs` calls a finding.
 - **`test_corpus.py`** lexes every document of the spec corpus and asserts that
   the definitions the corpus pins are scoped as definitions. A corpus case is a
   source next to the HTML it renders to, so the pair says which lines are

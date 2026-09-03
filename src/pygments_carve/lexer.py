@@ -102,6 +102,31 @@ def _label(depth=3):
 _LABEL = _label()
 
 
+#: A CONFORMING fence info string, as the guard on the pairing rules below.
+#:
+#: `code_fence_info` admits three shapes and nothing else - a language then an
+#: optional "title" then an optional [label], or a title then an optional label,
+#: or a label alone - and "a non-empty info string matches one of these three
+#: shapes or it is an INVALID-FENCE FALLBACK". The fallback is not cosmetic: an
+#: opener carrying a bare word after its language opens no block at all, and the
+#: corpus renders the whole of it as a paragraph holding an unpartnered code
+#: span. A pairing rule that ignored this would bury that paragraph as body.
+#:
+#: The ONE space before the info string is the grammar's, and is not a tab: five
+#: corpus documents pin a tab or a second space there as a paragraph.
+_FENCE_INFO = (
+    r'(?:[A-Za-z0-9_+#./-]+(?: +"[^"\n]*")?(?: +\[[^\]\n]*\])?'
+    r'|"[^"\n]*"(?: +\[[^\]\n]*\])?'
+    r'|\[[^\]\n]*\])'
+)
+
+
+#: How many lines a fenced body may hold before the fence stops pairing. See
+#: the fence rules below: this is the bound that keeps an unpairable opener from
+#: costing a scan of the rest of the document.
+_FENCE_BODY_LINES = 512
+
+
 #: A run of block markers a line may carry before its content: bullets, ordered
 #: markers and quote markers, in any nesting. A definition written after one is
 #: still a definition (`- [t]: /t`), so the definition rules take this prefix
@@ -154,10 +179,23 @@ class CarveLexer(RegexLexer):
         # Block level
         # ------------------------------------------------------------------
         'block': [
-            # Front matter, only at the very start of the document. `\A` is what
-            # keeps a `---yaml` line mid-document from opening one.
-            (r'\A(\ufeff?)(---)([a-zA-Z][\w-]*)?([ \t]*\n)',
-             bygroups(Text, Punctuation, Keyword.Type, Text), 'frontmatter'),
+            # Front matter, matched WHOLE, only at the very start of the
+            # document. `\A` is what keeps a `---yaml` line mid-document from
+            # opening one, and the required closer is what keeps a state from
+            # having to span the body - a state cannot, because none of its
+            # rules matched a bare newline and Pygments resets the stack at
+            # every line it cannot match (markup-carve/pygments-carve#32).
+            #
+            # A closer is REQUIRED here for the same reason the grammar
+            # requires one: `frontmatter` carries a `&(...)` guard demanding a
+            # closing `---` ahead, and "with no closer the guard fails, so a
+            # bare `---` at document start is an ordinary thematic break". The
+            # thematic-break rule below is what then takes the line.
+            (r'\A(\ufeff?)(---)([a-zA-Z][\w-]*)?([ \t]*\n)'
+             r'((?:[^\n]*\n)*?)'
+             r'(---)([ \t]*)$',
+             bygroups(Text, Punctuation, Keyword.Type, Text, Comment.Special,
+                      Punctuation, Text)),
 
             # A comment fence is matched WHOLE - opener, body and closer in
             # one rule - and the one-line comment follows it, because `%%%`
@@ -187,14 +225,92 @@ class CarveLexer(RegexLexer):
                       Comment, Text, Comment.Preproc, Comment)),
             (r'^' + _MARGIN + r'(%%)([^\n]*)$', bygroups(Comment.Preproc, Comment)),
 
-            # A raw block: the `=FORMAT` info string routes the payload to that
-            # output format verbatim. Emitted as one token including the `=`,
-            # because the format word without its sigil is not the construct.
+            # A code or raw fence is matched WHOLE - opener, body and closer in
+            # one rule - and the lone-fence line follows the pair, because an
+            # opener also matches it.
+            #
+            # WHOLE IS WHAT MAKES THE BODY OPAQUE. A separate state cannot hold
+            # it: none of that state's rules matched a bare newline, and
+            # Pygments resets the stack to `root` at every line no rule
+            # matches, so the state was abandoned before one body character was
+            # read and `# x` inside a Python block was scoped as a heading
+            # (markup-carve/pygments-carve#32). Whole is also the only shape
+            # that can carry the opener's own CHARACTER and WIDTH (`\3\4*`: the
+            # grammar's `char(close) = char(open) and len(close) >= len(open)`)
+            # and its COLUMN (`\2`, exactly - "a closing run indented PAST its
+            # opener is not a delimiter but code content", which is what lets a
+            # fence hold a fence as sample text) into the search for the closer.
+            #
+            # The body alternative is a single one, `[^\n]*\n`, taken lazily.
+            # There is exactly one way to split a span into whole lines, so the
+            # closer search never backtracks the way a second, overlapping
+            # alternative made it (markup-carve/pygments-carve#34).
+            #
+            # `_FENCE_BODY_LINES` IS THE BOUND ON THAT SEARCH, and it is load
+            # bearing. An opener that never finds its closer scans what is left
+            # of the document, so a file of openers that cannot pair - `` ```x ``
+            # repeated - costs one scan per line and the whole is QUADRATIC.
+            # Measured unbounded, doubling the input from 12000 to 96000
+            # characters of it multiplied the time by 3.05, 2.89 and 4.46, up to
+            # 35.9s; bounded, by 2.54, 2.25 and 2.15, up to 3.5s - which is 3.6x
+            # what this lexer costs on 96000 characters of ordinary prose, and
+            # the ratio near 2 that carve-grammars' `scan-superlinear.mjs` calls
+            # linear.
+            #
+            # WHAT THE BOUND TRADES AWAY: a fence whose body is longer than
+            # `_FENCE_BODY_LINES` does not pair, and its opener degrades to the
+            # lone-fence line below. The longest body in the 1564-document spec
+            # corpus is 3 lines and the longest across the spec's own
+            # documentation is 76.
+            #
+            # THE OPENER MUST CONFORM BEFORE IT CLAIMS A BODY. `_FENCE_INFO` is
+            # the guard: an info string outside the grammar's three shapes is an
+            # INVALID-FENCE FALLBACK and opens nothing, so pairing on one would
+            # bury a paragraph the corpus renders. It is a lookahead rather than
+            # the capture groups themselves, so the groups stay the ones the
+            # lone-fence rules below use and the two readings of an opener line
+            # cannot drift apart.
+            #
+            # A raw block's `=FORMAT` routes the payload to that output format
+            # verbatim. It is emitted as one token including the `=`, because
+            # the format word without its sigil is not the construct. It takes
+            # no title and no label, so its guard is the format word alone.
+            (r'^(\ufeff?)([ \t]*)((`|~)\4{2,})'
+             r'(?= ?=[a-zA-Z][\w+.-]*[ \t]*$)'
+             r'([ \t]*)(=[a-zA-Z][\w+.-]*)([^\n]*)(\n)'
+             r'((?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?)'
+             r'(\2)(\3\4*)([ \t]*)$',
+             bygroups(Text, Text, Punctuation, None, Text, Keyword.Type,
+                      using(this, state='infostring'), Text,
+                      using(this, state='fencebody'), Text, Punctuation, Text)),
+            (r'^(\ufeff?)([ \t]*)((`|~)\4{2,})'
+             r'(?= ?(?:' + _FENCE_INFO + r')?[ \t]*$)'
+             r'([ \t]*)([a-zA-Z][\w+#.-]*)?([^\n]*)(\n)'
+             r'((?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?)'
+             r'(\2)(\3\4*)([ \t]*)$',
+             bygroups(Text, Text, Punctuation, None, Text, Name.Builtin,
+                      using(this, state='infostring'), Text,
+                      using(this, state='fencebody'), Text, Punctuation, Text)),
+
+            # A FENCE LINE THIS LEXER DOES NOT PAIR: an opener with no matching
+            # closer ahead, and the closer of a pair the rules above did not
+            # take. It colours the delimiter run and its info string and claims
+            # nothing under it.
+            #
+            # WHAT THAT TRADES AWAY, written down rather than left to be
+            # rediscovered: an unterminated fence at document level really does
+            # open a code block that runs to the end of what encloses it, and
+            # here it does not. The line-based sibling grammars make the same
+            # trade for the same reason - inside a container an opener with no
+            # closer opens nothing, and a body that ran to end of input there
+            # would swallow the container's own closer and every block after
+            # it. Burial is the direction that loses a reader's text
+            # (markup-carve/pygments-carve#30).
             (r'^(' + _MARGIN + r')(`{3,}|~{3,})([ \t]*)(=[a-zA-Z][\w+.-]*)',
-             bygroups(Text, Punctuation, Text, Keyword.Type), 'codeblock'),
+             bygroups(Text, Punctuation, Text, Keyword.Type)),
             (r'^(' + _MARGIN + r')(`{3,}|~{3,})([ \t]*)([a-zA-Z][\w+#.-]*)?([^\n]*)',
              bygroups(Text, Punctuation, Text, Name.Builtin,
-                      using(this, state='infostring')), 'codeblock'),
+                      using(this, state='infostring'))),
 
             # Container divs. A reserved kind word (note, tip, figure, ...) names
             # a known container; `:::` followed by `|` is the layout form.
@@ -281,19 +397,19 @@ class CarveLexer(RegexLexer):
             include('inline'),
         ],
 
-        'frontmatter': [
-            (r'^(---)([ \t]*)$', bygroups(Punctuation, Text), '#pop'),
-            (r'[^\n]+\n?', Comment.Special),
-        ],
-
-        # A fence body is opaque: nothing inside it is Carve. The closer must be
-        # AT LEAST as long as the opener, and because a Pygments state cannot
-        # carry the opener's width, any fence run of three or more closes it.
-        # That is the same approximation the line-based sibling grammars make.
-        'codeblock': [
-            (r'^[ \t]*(?:`{3,}|~{3,})[ \t]*$', Punctuation, '#pop'),
+        # A fence body, reached only through the whole-fence rules above, which
+        # hand it the text BETWEEN the delimiters. Nothing in it is Carve - the
+        # one exception is the code-callout marker, which the spec puts inside
+        # a fence on purpose (`callout marker in fence` in the shared construct
+        # inventory).
+        #
+        # It is not a pushed state and cannot be one: a body spans lines, and a
+        # pushed state is abandoned at the first newline no rule matches. Here
+        # `[^<]+` matches a newline like any other character, which is also
+        # what makes the body reproduce its input.
+        'fencebody': [
             (r'<\d+>', Name.Constant),
-            (r'[^\n<]+|<', String.Backtick),
+            (r'[^<]+|<', String.Backtick),
         ],
 
         # The remainder of a fence or container opener line: a quoted title, a
