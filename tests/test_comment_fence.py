@@ -98,9 +98,6 @@ PINS = [
         '- x\n  %%%\ny\n  %%%\nz\n', '.C.C._', LINE_RULE),
     Pin('a wider line does not close a narrower opener',
         '- x\n  %%%\n  %%%%\nz\n', '.CC._', LINE_RULE),
-    Pin('the line form keeps its own margin',
-        '  %% note\nafter\n', 'C._', LINE_RULE,
-        tokens=((Comment.Preproc, '%%'), (Comment, ' note'), (Text, '\nafter\n'))),
 ]
 
 
@@ -213,6 +210,27 @@ def test_the_pins_catch_the_regression_they_were_written_for():
         'unterminated at an item content column is the line form',
         'a closer past a dedent is not this fence closer',
     ], broken
+
+
+def test_the_line_form_emits_its_margin_as_one_token():
+    """What tells the block line rule from the inline trailing-comment rule.
+
+    They agree on the margin's TYPE - both give it `Text`, which is what makes
+    the lexer reproduce its input (markup-carve/pygments-carve#33) - and differ
+    in granularity: the block rule emits the margin as ONE token, the inline
+    fallback one character at a time. `collapsed` joins consecutive same-type
+    tokens, so it cannot see that; this reads the raw run instead, which is why
+    this pin is here rather than in `PINS`.
+    """
+    assert list(LEXER.get_tokens('  %% note\n')) == [
+        (Text, '  '), (Comment.Preproc, '%%'), (Comment, ' note'), (Text, '\n')]
+
+
+def test_that_reading_is_the_block_rule_and_not_the_inline_one():
+    """Delete the block rule and the same line comes out of `inline` instead."""
+    mutant = build_lexer(without_rule(SOURCE, LINE_RULE, BLOCK))
+    assert list(mutant.get_tokens('  %% note\n')) == [
+        (Text, ' '), (Text, ' '), (Comment.Preproc, '%%'), (Comment, ' note'), (Text, '\n')]
 
 
 @corpus

@@ -79,9 +79,11 @@ def classify(lexer, source):
 def collapsed(lexer, source):
     """The token stream with consecutive same-type tokens joined.
 
-    Plain content is emitted one character per token, which buries the one
-    difference that matters here: the block rules swallow a line's leading
-    margin, the inline fallback emits it.
+    Plain content is emitted one character per token, which makes the raw run
+    unreadable as a pin. What it costs is granularity: the block line-comment
+    rule emits a line's margin as ONE `Text` token and the inline fallback emits
+    it one character at a time, and joining them makes those two identical. The
+    one pin that turns on it reads the raw run instead.
     """
     out = []
     for ttype, value in lexer.get_tokens(source):
