@@ -22,6 +22,12 @@ Nothing released yet. The initial capability set:
   pin to stop holding. Sixteen of the forty-six rules had been deletable with
   the suite green, because "not plain text" cannot tell a rule from a neighbour
   that catches the same payload. (markup-carve/pygments-carve#25)
+- The same for the 28 rules of the block state, plus a pin on each of its guard
+  clauses - removed one at a time, because deleting a rule tests that the rule
+  exists and can never test a refusal - and a corpus gate requiring a deleted
+  block rule to change how at least one corpus document is read. Two rules had
+  been deletable with the suite green.
+  (markup-carve/pygments-carve#41)
 - A corpus suite that lexes every document of the spec corpus and asserts the
   lexer scopes the definitions the corpus itself pins - the ones whose expected
   HTML shows them consumed. It measures a construct on the day the spec pin
