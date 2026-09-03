@@ -128,6 +128,17 @@ The suites, and the split matters:
   sharp from inside the suite rather than asserted. Before it, sixteen of those
   rules could be deleted outright with the suite green
   (markup-carve/pygments-carve#25).
+- **`test_block_rules.py`** does the same for the 28 rules of the block state,
+  and adds the two things that state needs. A CORPUS GATE, which needs nobody to
+  write a sample: deleting a block rule must change the lexer's reading of at
+  least one corpus document, and 27 of the 28 do - the exception is the lone raw
+  fence line, recorded by name so it is known rather than assumed. And one pin
+  per GUARD CLAUSE, each proved by removing that clause alone: deleting a rule
+  tests whether the rule exists and can never test a refusal, since a rule that
+  is gone refuses everything its guard refused. Before it, the `-` thematic
+  break and the definition-list `:` marker could both be deleted with the suite
+  green, though deleting the marker changes how 96 corpus documents are read
+  (markup-carve/pygments-carve#41).
 - **`test_typography.py`** reads the `arrow`, `comparison` and
   `typographic_symbol` productions out of `spec/resources/grammar.ebnf` in
   place, requires every alternative to be scoped as ONE token holding exactly

@@ -88,6 +88,29 @@ def without_rule(source, index, state=INLINE):
     return '\n'.join(lines[:first] + lines[past:])
 
 
+def without_clause(source, index, clause, occurrence=0, state=INLINE):
+    """``source`` with one ``clause`` removed from rule ``index`` of ``state``.
+
+    Deleting a rule tests whether the rule EXISTS. It cannot test a guard: a
+    rule that is gone also refuses everything the guard refused, so every "this
+    shape must not be taken" pin passes against a deletion for the wrong reason.
+    Removing the clause alone is the mutation that leaves the rule in place and
+    only loosens it, which is what makes such a pin say something.
+
+    ``occurrence`` picks which appearance to remove when a rule holds the same
+    clause twice - a fence pair carries a `$` inside its opener lookahead and
+    another on its closer, and they are different guards.
+    """
+    first, past, text = state_rules(source, state)[index]
+    parts = text.split(clause)
+    if len(parts) - 1 <= occurrence:
+        raise LookupError('rule %d of %r holds %d of %r, so there is no %d'
+                          % (index, state, len(parts) - 1, clause, occurrence))
+    mutated = clause.join(parts[:occurrence + 1]) + clause.join(parts[occurrence + 1:])
+    lines = source.split('\n')
+    return '\n'.join(lines[:first] + mutated.split('\n') + lines[past:])
+
+
 def build_lexer(source):
     """A ``CarveLexer`` built from ``source`` rather than from the import.
 

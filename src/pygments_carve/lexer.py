@@ -240,7 +240,7 @@ class CarveLexer(RegexLexer):
             # further line doubles it.
             (r'^(\ufeff?)([ \t]*)(%%%+)([^\n]*)(\n)'
              r'((?:\2[^\n]*\n|(?!\2)[ \t]*\n)*?)'
-             r'(\2)(\3)(?!%)([^\n]*)$',
+             r'(\2)(\3)(?!%)([^\n]*)',
              bygroups(Text, Text, Comment.Preproc, Comment, Text,
                       Comment, Text, Comment.Preproc, Comment)),
             # The MARGIN IS CAPTURED, like every other block rule's. `bygroups`
@@ -248,7 +248,7 @@ class CarveLexer(RegexLexer):
             # outside one reaches no token at all and the lexer stops reproducing
             # its input - which it did in 30 corpus documents
             # (markup-carve/pygments-carve#33).
-            (r'^(' + _MARGIN + r')(%%)([^\n]*)$',
+            (r'^(' + _MARGIN + r')(%%)([^\n]*)',
              bygroups(Text, Comment.Preproc, Comment)),
 
             # A code or raw fence is matched WHOLE - opener, body and closer in
