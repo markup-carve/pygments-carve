@@ -102,6 +102,25 @@ def _label(depth=3):
 _LABEL = _label()
 
 
+#: A CONFORMING fence info string, as the guard on the pairing rules below.
+#:
+#: `code_fence_info` admits three shapes and nothing else - a language then an
+#: optional "title" then an optional [label], or a title then an optional label,
+#: or a label alone - and "a non-empty info string matches one of these three
+#: shapes or it is an INVALID-FENCE FALLBACK". The fallback is not cosmetic: an
+#: opener carrying a bare word after its language opens no block at all, and the
+#: corpus renders the whole of it as a paragraph holding an unpartnered code
+#: span. A pairing rule that ignored this would bury that paragraph as body.
+#:
+#: The ONE space before the info string is the grammar's, and is not a tab: five
+#: corpus documents pin a tab or a second space there as a paragraph.
+_FENCE_INFO = (
+    r'(?:[A-Za-z0-9_+#./-]+(?: +"[^"\n]*")?(?: +\[[^\]\n]*\])?'
+    r'|"[^"\n]*"(?: +\[[^\]\n]*\])?'
+    r'|\[[^\]\n]*\])'
+)
+
+
 #: How many lines a fenced body may hold before the fence stops pairing. See
 #: the fence rules below: this is the bound that keeps an unpairable opener from
 #: costing a scan of the rest of the document.
@@ -244,16 +263,29 @@ class CarveLexer(RegexLexer):
             # corpus is 3 lines and the longest across the spec's own
             # documentation is 76.
             #
+            # THE OPENER MUST CONFORM BEFORE IT CLAIMS A BODY. `_FENCE_INFO` is
+            # the guard: an info string outside the grammar's three shapes is an
+            # INVALID-FENCE FALLBACK and opens nothing, so pairing on one would
+            # bury a paragraph the corpus renders. It is a lookahead rather than
+            # the capture groups themselves, so the groups stay the ones the
+            # lone-fence rules below use and the two readings of an opener line
+            # cannot drift apart.
+            #
             # A raw block's `=FORMAT` routes the payload to that output format
             # verbatim. It is emitted as one token including the `=`, because
-            # the format word without its sigil is not the construct.
-            (r'^(\ufeff?)([ \t]*)((`|~)\4{2,})([ \t]*)(=[a-zA-Z][\w+.-]*)([^\n]*)(\n)'
+            # the format word without its sigil is not the construct. It takes
+            # no title and no label, so its guard is the format word alone.
+            (r'^(\ufeff?)([ \t]*)((`|~)\4{2,})'
+             r'(?= ?=[a-zA-Z][\w+.-]*[ \t]*$)'
+             r'([ \t]*)(=[a-zA-Z][\w+.-]*)([^\n]*)(\n)'
              r'((?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?)'
              r'(\2)(\3\4*)([ \t]*)$',
              bygroups(Text, Text, Punctuation, None, Text, Keyword.Type,
                       using(this, state='infostring'), Text,
                       using(this, state='fencebody'), Text, Punctuation, Text)),
-            (r'^(\ufeff?)([ \t]*)((`|~)\4{2,})([ \t]*)([a-zA-Z][\w+#.-]*)?([^\n]*)(\n)'
+            (r'^(\ufeff?)([ \t]*)((`|~)\4{2,})'
+             r'(?= ?(?:' + _FENCE_INFO + r')?[ \t]*$)'
+             r'([ \t]*)([a-zA-Z][\w+#.-]*)?([^\n]*)(\n)'
              r'((?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?)'
              r'(\2)(\3\4*)([ \t]*)$',
              bygroups(Text, Text, Punctuation, None, Text, Name.Builtin,

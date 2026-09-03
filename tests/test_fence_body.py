@@ -258,16 +258,16 @@ def test_the_corpus_has_fenced_bodies_to_measure():
 
 @corpus
 def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
-    """The zero above is only meaningful if this gate can reach seventy-one.
+    """The zero above is only meaningful if this gate can reach fifty-eight.
 
     Run over the same 1564 documents, the pre-#32 rule shape leaves live Carve
-    markup inside a fenced body in every document that holds one but one - the
+    markup inside a fenced body in all but one document that holds one - the
     exception being a body whose only content is whitespace, which carries no
     scope either way.
     """
     hits = [p.name for p in DOCUMENTS
             if _non_verbatim(REGRESSION, p.read_text(encoding='utf-8'))]
-    assert len(hits) == 71, len(hits)
+    assert len(hits) == 58, len(hits)
 
 
 def test_the_reader_reports_live_markup_when_there_is_some():
@@ -319,3 +319,71 @@ def _elapsed(source):
     start = time.perf_counter()
     list(LEXER.get_tokens(source))
     return time.perf_counter() - start
+
+
+# ----------------------------------------------------------------------------
+# An info string outside the grammar's three shapes opens no block
+# ----------------------------------------------------------------------------
+
+#: A sample, the body text an opener must NOT claim, and the corpus case that
+#: says so. Each of these renders as a PARAGRAPH - the fence does not open - so
+#: a rule that paired on it would bury the paragraph, which is the direction
+#: that loses a reader's text. The last has no corpus case and came out of
+#: review of this change.
+INVALID_INFO = [
+    ('```js title="x"\ncode\n```\n', 'code', '11-fenced-code-11'),
+    ('```php [Composer] "x"\ncode\n```\n', 'code', '11-fenced-code-12'),
+    ('```js\t"T"\nx\n```\n', 'x', '258-code-fence-metadata-slots-must-be-a-space-too-4'),
+    ('```\tphp\nx\n```\n', 'x', '330-a-tab-after-a-fence-or-a-frontmatter-opener-depends-on-where-it-sits'),
+    ('```  php\nx = 1\n```\n', 'x = 1', '263-a-code-fence-opener-takes-exactly-one-space'),
+    ('```js bad\n# heading\n```\n', '# heading', None),
+    # A raw block takes no title and no label, so its guard is the format word
+    # alone - a separate line, and separately proved.
+    ('```=html "T"\npayload\n```\n', 'payload', None),
+]
+
+
+def _buries(lexer, source, body):
+    return any(t is String.Backtick and body in v for t, v in lexer.get_tokens(source))
+
+
+def _without_guard(marker):
+    """``SOURCE`` with the one opener guard whose line holds ``marker`` removed.
+
+    This is the mutation that proves the pins below say something. Deleting the
+    pairing rule cannot: a rule that is gone also fails to pair, so every "must
+    NOT claim a body" pin would pass against it for the wrong reason.
+    """
+    lines = [l for l in SOURCE.split('\n') if marker in l]
+    assert len(lines) == 1, 'expected one guard line holding %r, found %d' % (marker, len(lines))
+    return build_lexer(SOURCE.replace(lines[0] + '\n', '', 1))
+
+
+UNGUARDED = _without_guard('+ _FENCE_INFO +')
+UNGUARDED_RAW = _without_guard('(?= ?=[a-zA-Z]')
+
+
+@pytest.mark.parametrize('sample,body,case', INVALID_INFO, ids=lambda v: None)
+def test_an_invalid_info_string_claims_no_body(sample, body, case):
+    assert not _buries(LEXER, sample, body), (
+        '%r is not one of the three shapes `code_fence_info` admits, so it opens '
+        'no block - and this pairs on it and buries %r.' % (sample, body))
+
+
+@pytest.mark.parametrize('sample,body,case', INVALID_INFO, ids=lambda v: None)
+def test_the_guard_is_what_refuses_an_invalid_info_string(sample, body, case):
+    """Remove the guard and every one of them buries its body."""
+    mutant = UNGUARDED_RAW if sample.startswith('```=') else UNGUARDED
+    assert _buries(mutant, sample, body), (
+        'without the info-string guard %r is expected to bury %r; if it no '
+        'longer does, this pin is measuring something else.' % (sample, body))
+
+
+@corpus
+@pytest.mark.parametrize('sample,body,case',
+                         [c for c in INVALID_INFO if c[2]], ids=lambda v: None)
+def test_the_corpus_says_those_openers_render_a_paragraph(sample, body, case):
+    """The pins above are the corpus's reading, not this suite's invention."""
+    html = (CORPUS / (case + '.html')).read_text(encoding='utf-8')
+    assert '<pre>' not in html, html
+    assert '<p><code>' in html, html

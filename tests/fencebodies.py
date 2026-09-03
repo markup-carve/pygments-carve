@@ -22,6 +22,18 @@ import re
 #: A fence line: indent, a homogeneous run of one fence character, and its tail.
 _FENCE = re.compile(r'^([ \t]*)((`)\3{2,}|(~)\4{2,})([^\n]*)$')
 
+#: A CONFORMING opener tail: the raw block's `=FORMAT`, or one of the three
+#: shapes `code_fence_info` admits. Anything else is an INVALID-FENCE FALLBACK -
+#: ```` ```js title="x" ```` opens no block, and the corpus renders it as a
+#: paragraph - so a reader that paired on one would be asking the lexer to bury
+#: a paragraph.
+_INFO = re.compile(
+    r'^ ?(?:=[a-zA-Z][\w+.-]*'
+    r'|[A-Za-z0-9_+#./-]+(?: +"[^"\n]*")?(?: +\[[^\]\n]*\])?'
+    r'|"[^"\n]*"(?: +\[[^\]\n]*\])?'
+    r'|\[[^\]\n]*\])?[ \t]*$'
+)
+
 #: A comment fence, whose body this reader steps over rather than pairing.
 _COMMENT = re.compile(r'^([ \t]*)(%{3,})([^\n]*)$')
 
@@ -87,6 +99,9 @@ def bodies(source):
             continue
         match = _FENCE.match(line)
         if not match:
+            index += 1
+            continue
+        if not _INFO.match(match.group(5)):
             index += 1
             continue
         indent, run = match.group(1), match.group(2)

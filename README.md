@@ -76,9 +76,11 @@ end: an opener with no closer ahead really does open a code block that runs to
 the end of what encloses it, and here it colours its own line and claims nothing
 under it - the reading the line-based sibling grammars take, because a body that
 ran to end of input inside a container would swallow the container's own closer
-and every block after it. A body longer than 512 lines does not pair either;
-that bound is what keeps a file of openers that can never pair from costing a
-scan of the document per line.
+and every block after it. An opener whose info string is outside the three
+shapes the grammar admits does not pair either, because such a line opens no
+block at all and the corpus renders it as a paragraph. Nor does a body longer
+than 512 lines; that bound is what keeps a file of openers that can never pair
+from costing a scan of the document per line.
 
 **An attribute block is one token.** `{#id .cls key="v"}` is emitted whole as
 `Name.Attribute` rather than split into parts, matching how the sibling grammars
