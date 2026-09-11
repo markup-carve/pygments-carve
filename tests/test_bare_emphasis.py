@@ -219,13 +219,19 @@ def test_the_corpus_has_emphasis_runs_to_measure():
 
 @corpus
 def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
-    """The zero above is only meaningful if this gate can reach sixteen.
+    """The zero above is only meaningful if this gate can reach seventeen.
 
-    Run over the same 1564 documents, the unguarded rules scope a run whose
+    Run over the same 1690 documents, the unguarded rules scope a run whose
     delimiters survive into the expected HTML in exactly these. The ticket
     measured SEVENTEEN; the extra one is `11-fenced-code-15`, where the run sat
     in a fenced body and markup-carve/pygments-carve#38 stopped lexing those as
     Carve before this change was written.
+
+    The `455-*-2` entry arrived with a corpus bump rather than with a rule
+    change: its tilde fence opens on a nested item lead, so the unguarded rules
+    read the `~~~` as a bare-emphasis run while the corpus renders the
+    delimiters. The guarded lexer still reports zero on it, like every other
+    document here.
     """
     hits = sorted(p.stem for p in DOCUMENTS
                   if _case(p)[1] is not None
@@ -245,6 +251,7 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters-5',
         '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters-7',
         '276-a-fence-opened-on-a-list-marker-line-body-below-the-content-column-5',
+        '455-an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-2',
         '76-doubled-emphasis-delimiters',
         '79-two-char-delimiter-runs',
     ], hits
