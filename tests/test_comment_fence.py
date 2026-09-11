@@ -235,12 +235,16 @@ def test_that_reading_is_the_block_rule_and_not_the_inline_one():
 
 @corpus
 def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
-    """The zero above is only meaningful if this reader can reach eight.
+    """The zero above is only meaningful if this reader can reach twenty-four.
 
-    Run over the same 1564 documents, the #30 rule shape buries content the
+    Run over the same 1690 documents, the #30 rule shape buries content the
     corpus renders in exactly these - the six the ticket found plus two older
     ones at COLUMN 0, which is why reserving the multi-line fence for column 0
-    would not have closed it.
+    would not have closed it, and sixteen more that arrived with corpus bumps.
+    The sixteen are the comment-fence rulings the spec has made since: sections
+    445 and 446 for the degraded fence, and 449 for a comment below a
+    description body's column. None of them is a rule change here - the current
+    lexer buries nothing in any of them.
     """
     hits = []
     for path in DOCUMENTS:
@@ -260,6 +264,29 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
         '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-6.crv',
         '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-7.crv',
         '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-8.crv',
+        '445-a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-follo'
+        'wer-in-the-item.crv',
+        '445-a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-follo'
+        'wer-in-the-item-4.crv',
+        '445-a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-follo'
+        'wer-in-the-item-5.crv',
+        '445-a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-follo'
+        'wer-in-the-item-6.crv',
+        '445-a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-follo'
+        'wer-in-the-item-7.crv',
+        '445-a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-follo'
+        'wer-in-the-item-10.crv',
+        '445-a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-follo'
+        'wer-in-the-item-11.crv',
+        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-form-does.crv',
+        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-form-does-3.crv',
+        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-form-does-5.crv',
+        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-form-does-6.crv',
+        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-form-does-7.crv',
+        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-form-does-9.crv',
+        '449-a-comment-below-a-description-body-s-column-ends-the-body-4.crv',
+        '449-a-comment-below-a-description-body-s-column-ends-the-body-6.crv',
+        '449-a-comment-below-a-description-body-s-column-ends-the-body-9.crv',
     ]), hits
 
 

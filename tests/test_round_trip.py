@@ -157,12 +157,15 @@ def test_the_smallest_repro_is_reproduced_and_the_old_rule_loses_it():
 
 @corpus
 def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
-    """The pass above is only meaningful if this gate can reach thirty-one.
+    """The pass above is only meaningful if this gate can reach forty-five.
 
-    Run over the same 1564 documents with the margin outside its group and the
+    Run over the same 1690 documents with the margin outside its group and the
     two Pygments defaults back on - the state this repository was in when the
-    ticket was filed - the gate names 31, and they split cleanly: 28 from the
-    rule and 3 from the defaults, with no document in both sets.
+    ticket was filed - the gate names 45, and they split cleanly: 42 from the
+    rule and 3 from the defaults, with no document in both sets. The rule's
+    share moves with the corpus, not with the rules: it was 28 of 31 over 1564
+    documents before the bumps that added the comment-fence and
+    description-body sections, and the three the DEFAULTS cost have not moved.
 
     The ticket counted 32, comparing against the SOURCE rather than against what
     Pygments hands the rules. The 32nd is `250-line-endings-and-a-byte-order-
@@ -177,8 +180,8 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         _regression_source()
         .replace("options.setdefault('stripnl', False)", "options.setdefault('stripnl', True)")
         .replace("options.setdefault('ensurenl', False)", "options.setdefault('ensurenl', True)"))
-    assert count(both) == 31, count(both)
-    assert count(REGRESSION) == 28, count(REGRESSION)
+    assert count(both) == 45, count(both)
+    assert count(REGRESSION) == 42, count(REGRESSION)
     assert count(DEFAULTS) == 3, count(DEFAULTS)
     assert count(LEXER) == 0, count(LEXER)
 
