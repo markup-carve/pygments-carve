@@ -98,11 +98,13 @@ PINS = [
     Pin('inline code', 'a `x` b',
         [(Punctuation, '`'), (String.Backtick, 'x'), (Punctuation, '`')]),
     Pin('include directive', 'a {{ ch.crv #intro }} b',
-        [(Name.Decorator, '{{ ch.crv #intro }}')],
-        note='The WHOLE directive, selector included: the defect this pins is '
-             '`#intro` coming out as the tag rule below, which is what `#word` '
-             'genuinely is everywhere else. The pin sits where the RULE does - '
-             'this list is index-aligned with the lexer state.'),
+        [(Punctuation, '{{'), (Name.Namespace, 'ch.crv'), (Name.Label, '#intro'),
+         (Punctuation, '}}')],
+        note='Scoped BY PART. The defect this pins is `#intro` coming out as '
+             'the tag rule below, which is what `#word` genuinely is everywhere '
+             'else - so the run it lands in is what the pin records. The pin '
+             'sits where the RULE does: this list is index-aligned with the '
+             'lexer state.'),
     Pin('critic substitution', 'a {~old~>new~} b',
         [(Punctuation, '{~'), (Generic.Deleted, 'old'), (Operator, '~>'),
          (Generic.Inserted, 'new'), (Punctuation, '~}')]),

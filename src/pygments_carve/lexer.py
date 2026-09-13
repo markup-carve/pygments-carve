@@ -551,7 +551,8 @@ class CarveLexer(RegexLexer):
             # coloured as a hashtag inside a path. After the verbatim family, so
             # a directive in a code span stays literal; before every other brace
             # rule, none of which can spell `{{`.
-            (r'\{\{[^{}\n]*\}\}', Name.Decorator),
+            (r'(\{\{)([ \t]+)((?:"(?:\\\\.|[^"\\\\])*"|[^#@}\s"][^#@}\s]*))((?:[ \t]+[^\s}]+)*)([ \t]+)(\}\})',
+             bygroups(Punctuation, Text, Name.Namespace, using(this, state='includeparts'), Text, Punctuation)),
 
             # CriticMarkup substitution and comment, before the forced family:
             # `{~old~>new~}` also matches the forced-strike shape.
@@ -690,6 +691,22 @@ class CarveLexer(RegexLexer):
             # the `:name:` shortcode above produces, so they share its type.
             # Lowercase only: `(C)` and `(TM)` stay literal.
             (r'\(c\)|\(r\)|\(tm\)|\+-', Name.Constant),
+        ],
+
+        # The tail of a directive: selector, option slots, and whatever else was
+        # written there. Scoped BY PART - the outer rule is what keeps the tag
+        # and mention rules out, so painting one token buys nothing, and a
+        # reader wants the path to look like a path.
+        #
+        # A part that is neither a section nor an option stays plain text rather
+        # than being refused, matching the processor, which leaves a malformed
+        # directive alone.
+        'includeparts': [
+            (r'[ \t]+', Text),
+            (r'#[A-Za-z_][\w-]*', Name.Label),
+            (r'(@[A-Za-z_][\w-]*)(:)([^\s}]+)',
+             bygroups(Name.Attribute, Punctuation, Literal)),
+            (r'[^\s}]+', Text),
         ],
 
         'inlinefootnote': [
