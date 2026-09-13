@@ -540,6 +540,19 @@ class CarveLexer(RegexLexer):
              bygroups(Operator, Punctuation, String.Other, Punctuation)),
             (r'(`+)([^\n]*?)(\1)', bygroups(Punctuation, String.Backtick, Punctuation)),
 
+            # The reserved include directive `{{ path #section @key:value }}`
+            # (PART 9 section 19, grammar.ebnf `include_directive`). The core
+            # leaves it literal; a processor expands it only when a host
+            # supplies a resolver.
+            #
+            # ONE token, because its own selector is spelled with constructs
+            # this lexer already knows: `#section` is the tag rule below and an
+            # option slot is the mention rule, so without this `#intro` came out
+            # coloured as a hashtag inside a path. After the verbatim family, so
+            # a directive in a code span stays literal; before every other brace
+            # rule, none of which can spell `{{`.
+            (r'\{\{[^{}\n]*\}\}', Name.Decorator),
+
             # CriticMarkup substitution and comment, before the forced family:
             # `{~old~>new~}` also matches the forced-strike shape.
             (r'(\{~)([^\n]*?)(~>)([^\n]*?)(~\})',
