@@ -97,7 +97,7 @@ PINS = [
         [(Operator, '$'), (Punctuation, '`'), (String.Other, 'x'), (Punctuation, '`')]),
     Pin('inline code', 'a `x` b',
         [(Punctuation, '`'), (String.Backtick, 'x'), (Punctuation, '`')]),
-    Pin('include directive', 'a {{ ch.crv #intro }} b',
+    Pin('include directive', 'a {{ ch.crv#intro }} b',
         [(Punctuation, '{{'), (Name.Namespace, 'ch.crv'), (Name.Label, '#intro'),
          (Punctuation, '}}')],
         note='Scoped BY PART. The defect this pins is `#intro` coming out as '

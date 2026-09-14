@@ -551,7 +551,7 @@ class CarveLexer(RegexLexer):
             # coloured as a hashtag inside a path. After the verbatim family, so
             # a directive in a code span stays literal; before every other brace
             # rule, none of which can spell `{{`.
-            (r'(\{\{)([ \t]+)((?:"(?:\\\\.|[^"\\\\])*"|[^#@}\s"][^#@}\s]*))((?:[ \t]+[^\s}]+)*)([ \t]+)(\}\})',
+            (r'(\{\{)([ \t]+)((?:"(?:\\\\.|[^"\\\\])*"|[^#@}\s"][^#@}\s]*))((?:#[A-Za-z_][\w-]*)?(?:[ \t]+[^\s}]+)*)([ \t]+)(\}\})',
              bygroups(Punctuation, Text, Name.Namespace, using(this, state='includeparts'), Text, Punctuation)),
 
             # CriticMarkup substitution and comment, before the forced family:
