@@ -545,13 +545,13 @@ class CarveLexer(RegexLexer):
             # leaves it literal; a processor expands it only when a host
             # supplies a resolver.
             #
-            # ONE token, because its own selector is spelled with constructs
+            # One directive rule, because its own selector is spelled with constructs
             # this lexer already knows: `#section` is the tag rule below and an
             # option slot is the mention rule, so without this `#intro` came out
             # coloured as a hashtag inside a path. After the verbatim family, so
             # a directive in a code span stays literal; before every other brace
             # rule, none of which can spell `{{`.
-            (r'(\{\{)([ \t]+)((?:"(?:\\\\.|[^"\\\\])*"|[^#@}\s"][^#@}\s]*))((?:#[A-Za-z_][\w-]*)?(?:[ \t]+[^\s}]+)*)([ \t]+)(\}\})',
+            (r'(\{\{)([ \t]+)((?:"(?:\\.|[^"\\])*"|[^#@}\s"][^#@}\s]*))((?:#[A-Za-z_][A-Za-z0-9_-]*)?(?:[ \t]+[^\s}]+)*)([ \t]+)(\}\})',
              bygroups(Punctuation, Text, Name.Namespace, using(this, state='includeparts'), Text, Punctuation)),
 
             # CriticMarkup substitution and comment, before the forced family:
@@ -703,8 +703,8 @@ class CarveLexer(RegexLexer):
         # directive alone.
         'includeparts': [
             (r'[ \t]+', Text),
-            (r'#[A-Za-z_][\w-]*', Name.Label),
-            (r'(@[A-Za-z_][\w-]*)(:)([^\s}]+)',
+            (r'#[A-Za-z_][A-Za-z0-9_-]*', Name.Label),
+            (r'(@[A-Za-z_][A-Za-z0-9_-]*)(:)([^\s}]+)',
              bygroups(Name.Attribute, Punctuation, Literal)),
             (r'[^\s}]+', Text),
         ],
