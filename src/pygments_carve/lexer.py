@@ -540,6 +540,20 @@ class CarveLexer(RegexLexer):
              bygroups(Operator, Punctuation, String.Other, Punctuation)),
             (r'(`+)([^\n]*?)(\1)', bygroups(Punctuation, String.Backtick, Punctuation)),
 
+            # The reserved include directive `{{ path #section @key:value }}`
+            # (PART 9 section 19, grammar.ebnf `include_directive`). The core
+            # leaves it literal; a processor expands it only when a host
+            # supplies a resolver.
+            #
+            # One directive rule, because its own selector is spelled with constructs
+            # this lexer already knows: `#section` is the tag rule below and an
+            # option slot is the mention rule, so without this `#intro` came out
+            # coloured as a hashtag inside a path. After the verbatim family, so
+            # a directive in a code span stays literal; before every other brace
+            # rule, none of which can spell `{{`.
+            (r'(\{\{)([ \t]+)((?:"(?:\\.|[^"\\])*"|[^#@}\s"][^#@}\s]*))((?:#[A-Za-z_][A-Za-z0-9_-]*)?(?:[ \t]+[^\s}]+)*)([ \t]+)(\}\})',
+             bygroups(Punctuation, Text, Name.Namespace, using(this, state='includeparts'), Text, Punctuation)),
+
             # CriticMarkup substitution and comment, before the forced family:
             # `{~old~>new~}` also matches the forced-strike shape.
             (r'(\{~)([^\n]*?)(~>)([^\n]*?)(~\})',
@@ -677,6 +691,22 @@ class CarveLexer(RegexLexer):
             # the `:name:` shortcode above produces, so they share its type.
             # Lowercase only: `(C)` and `(TM)` stay literal.
             (r'\(c\)|\(r\)|\(tm\)|\+-', Name.Constant),
+        ],
+
+        # The tail of a directive: selector, option slots, and whatever else was
+        # written there. Scoped BY PART - the outer rule is what keeps the tag
+        # and mention rules out, so painting one token buys nothing, and a
+        # reader wants the path to look like a path.
+        #
+        # A part that is neither a section nor an option stays plain text rather
+        # than being refused, matching the processor, which leaves a malformed
+        # directive alone.
+        'includeparts': [
+            (r'[ \t]+', Text),
+            (r'#[A-Za-z_][A-Za-z0-9_-]*', Name.Label),
+            (r'(@[A-Za-z_][A-Za-z0-9_-]*)(:)([^\s}]+)',
+             bygroups(Name.Attribute, Punctuation, Literal)),
+            (r'[^\s}]+', Text),
         ],
 
         'inlinefootnote': [

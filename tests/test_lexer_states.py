@@ -40,6 +40,10 @@ USING_STATES = {
     # The marker run a definition line carries before its content, likewise
     # matched within one line.
     'markerrun': 'its group is a single line by construction',
+    # The tail of an include directive: its selector, option slots and anything
+    # else written there. The directive rule requires its closer on the same
+    # line, so the group handed over cannot hold a newline.
+    'includeparts': 'its group is a single line by construction',
     # The one that DOES span lines - and therefore does match a newline, which
     # `test_the_multi_line_using_state_survives_a_newline` asserts rather than
     # exempting.

@@ -10,6 +10,12 @@ Nothing released yet. The initial capability set:
 
 ### Added
 
+- The reserved include directive `{{ path #section @key:value }}` (PART 9
+  section 19, markup-carve/carve#291) is lexed BY PART: the path as
+  `Name.Namespace`, the selector as `Name.Label`, and each option as
+  `Name.Attribute` plus its value. It used to shred into the constructs its own
+  selector is spelled with, so `#intro` in a path came out colored as a
+  hashtag.
 - A Pygments lexer for Carve, registered through the `pygments.lexers` entry
   point so that installing the package is enough for `carve` and `crv` to work
   as fence words in MkDocs, Sphinx, zensical and every other Pygments consumer.
