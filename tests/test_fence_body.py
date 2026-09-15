@@ -260,7 +260,7 @@ def test_the_corpus_has_fenced_bodies_to_measure():
 def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     """The zero above is only meaningful if this gate can reach sixty-three.
 
-    Run over the same 1690 documents, the pre-#32 rule shape leaves live Carve
+    Run over the same 1707 documents, the pre-#32 rule shape leaves live Carve
     markup inside a fenced body in all but one document that holds one - the
     exception being a body whose only content is whitespace, which carries no
     scope either way. The count moves with the corpus, not with the rules: it
