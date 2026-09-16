@@ -159,7 +159,7 @@ def test_the_smallest_repro_is_reproduced_and_the_old_rule_loses_it():
 def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
     """The pass above is only meaningful if this gate can reach forty-five.
 
-    Run over the same 1690 documents with the margin outside its group and the
+    Run over the same 1707 documents with the margin outside its group and the
     two Pygments defaults back on - the state this repository was in when the
     ticket was filed - the gate names 45, and they split cleanly: 42 from the
     rule and 3 from the defaults, with no document in both sets. The rule's

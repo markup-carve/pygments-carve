@@ -237,7 +237,7 @@ def test_that_reading_is_the_block_rule_and_not_the_inline_one():
 def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     """The zero above is only meaningful if this reader can reach twenty-four.
 
-    Run over the same 1690 documents, the #30 rule shape buries content the
+    Run over the same 1707 documents, the #30 rule shape buries content the
     corpus renders in exactly these - the six the ticket found plus two older
     ones at COLUMN 0, which is why reserving the multi-line fence for column 0
     would not have closed it, and sixteen more that arrived with corpus bumps.
