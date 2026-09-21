@@ -16,7 +16,7 @@ import os
 
 import pytest
 
-from pygments.token import Error, Text
+from pygments.token import Error, Punctuation, Text
 
 import inventory
 
@@ -55,18 +55,32 @@ def refuse_skip_in_ci(present, what, remedy):
 def payload_of(construct):
     """The text that must carry a scope.
 
-    ``enginePayload`` exists for the few constructs the line-based sibling
-    grammars tokenize at a coarser granularity than TextMate does; this lexer is
-    in that family, so it uses the same payload they do when one is given.
+    ``enginePayload`` is the Prism and highlight.js payload, used here when one
+    is given. It can span a delimited run, which ``scope_of`` handles.
     """
     return construct.get('enginePayload') or construct['payload']
 
 
+def _scoped(ttype):
+    return ttype not in UNSCOPED and ttype is not Error
+
+
 def scope_of(lexer, source, payload):
-    """The first non-text token type covering ``payload``, or None."""
-    for ttype, value in lexer.get_tokens(source):
-        if payload in value and ttype not in UNSCOPED and ttype is not Error:
+    """The type of the token scoping ``payload``, or None.
+
+    Either one scoped token contains the payload, or the payload is exactly an
+    opening delimiter, a body and a closing delimiter: this lexer splits a run
+    like ``{- -}`` or ``/*b*/`` into three tokens where Prism emits one. The
+    exact match keeps a run that crosses its own closer from passing.
+    """
+    tokens = list(lexer.get_tokens(source))
+    for ttype, value in tokens:
+        if payload in value and _scoped(ttype):
             return ttype
+    for (opener, ov), (body, bv), (closer, cv) in zip(tokens, tokens[1:], tokens[2:]):
+        if (opener is Punctuation and closer is Punctuation and ov + bv + cv == payload
+                and _scoped(body) and body is not Punctuation):
+            return body
     return None
 
 
