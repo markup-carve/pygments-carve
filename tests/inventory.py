@@ -248,3 +248,30 @@ def load_inventory(path=None):
                 'a construct is missing %s: %r' % (', '.join(missing), construct)
             )
     return constructs
+
+
+def load_literals(path=None):
+    """The shapes carve-grammars rules are NOT the construct they resemble.
+
+    Held to upstream's own ``MIN_LITERALS`` floor, for the reason
+    ``load_inventory`` holds ``CONSTRUCTS`` to ``MIN_CONSTRUCTS``.
+    """
+    path = pathlib.Path(path) if path else CONSTRUCTS_JS
+    if not path.is_file():
+        raise InventoryError(
+            '%s is not there - the carve-grammars submodule is not checked out. '
+            'Run: git submodule update --init' % path
+        )
+    source = path.read_text(encoding='utf-8')
+    literals = read_exported_array(source, 'LITERALS')
+    floor = read_exported_int(source, 'MIN_LITERALS')
+    if len(literals) < floor:
+        raise InventoryError(
+            'read %d literals from %s, and that file declares a floor of %d'
+            % (len(literals), path, floor)
+        )
+    for literal in literals:
+        missing = [key for key in ('name', 'sample', 'payload') if not literal.get(key)]
+        if missing:
+            raise InventoryError('a literal is missing %s: %r' % (', '.join(missing), literal))
+    return literals

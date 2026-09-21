@@ -96,6 +96,11 @@ def _appears_literally(definition, html):
     return text in html or escaped in html
 
 
+def literals(source, html):
+    """The candidates the expected HTML shows were left as paragraph text."""
+    return [d for d in candidates(source) if _appears_literally(d, html)]
+
+
 def definitions(source, html):
     """The candidates the expected HTML shows were consumed as definitions.
 

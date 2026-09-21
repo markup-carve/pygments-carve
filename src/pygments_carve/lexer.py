@@ -135,10 +135,16 @@ _MARKER = (
     r'(?:'
     r'>+'
     r'|(?:\d+|[A-Za-z]+)[.)](?:' + _ATTRS + r')?'
-    r'|[-*+.](?:' + _ATTRS + r')?'
+    r'|[-*.](?:' + _ATTRS + r')?'
     r')'
 )
 _MARKER_RUN = r'(?:' + _MARKER + r'[ \t]+)*'
+
+
+#: Unicode `White_Space`, which ends a link destination. Python's `\s` also
+#: matches U+001C-U+001F, which are destination characters.
+_WHITE_SPACE = '\t\n\x0b\x0c\r \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000'
+_LINE_SPACE = _WHITE_SPACE.replace('\n', '')
 
 
 #: Characters that can begin an inline construct. A run of anything else is
@@ -360,7 +366,8 @@ class CarveLexer(RegexLexer):
 
             # Definition markers: footnote, link reference, abbreviation. The
             # separator after the colon must START WITH A LITERAL SPACE - a
-            # tab-first separator makes the line an ordinary paragraph.
+            # tab-first separator makes the line an ordinary paragraph - and a
+            # footnote or abbreviation needs content after it.
             #
             # A leading marker run is part of the shape: a definition is a
             # definition on `- [t]: /t` too, and the corpus resolves the call in
@@ -372,17 +379,26 @@ class CarveLexer(RegexLexer):
             # because `inline` has no pop rule - `block` includes it, so a pop
             # there would pop the root state - and an unpopped body swallows
             # every block construct in the rest of the document.
-            (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\[\^)([^\]\n]+)(\]:)( )',
+            (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\[\^)([^\]\n]+)(\]:)( )(?![ \t]*$)',
              bygroups(Text, using(this, state='markerrun'), Punctuation, Name.Label,
                       Punctuation, Text), 'defbody'),
             # No marker run on the abbreviation form: an abbreviation is defined
             # at document level only, so `- *[HTML]: ...` and `> *[HTML]: ...`
             # are paragraph text (corpus 179, 180).
-            (r'^(' + _MARGIN + r')(\*\[)([^\]\n]+)(\]:)( )',
+            (r'^(' + _MARGIN + r')(\*\[)([^\]\n]+)(\]:)( )(?![ \t]*$)',
              bygroups(Text, Punctuation, Name.Entity, Punctuation, Text), 'defbody'),
-            (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\[)([^\]\n]+)(\]:)( )',
+            # A link reference definition only where the line COMPLETES the
+            # production: a title and an attribute block each behind exactly one
+            # space, then only trailing spaces or tabs, so `[a]: /u zzz` and
+            # `[a]: /u  "T"` are paragraphs (CARVE-P3-005). A label may not
+            # start with `@` (CARVE-P3-003).
+            (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\[)(?!@)([^\]\n]+)(\]:)'
+             r'( [' + _LINE_SPACE + r']*)([^' + _WHITE_SPACE + r']+)'
+             r'(?:( )(?:("(?:\\"|[^"\n])*")|(\'(?:\\\'|[^\'\n])*\')))?'
+             r'(?:( )(' + _ATTRS + r'))?([ \t]*)$',
              bygroups(Text, using(this, state='markerrun'), Punctuation, Name.Label,
-                      Punctuation, Text), 'linkdest'),
+                      Punctuation, Text, Name.Tag, Text, String.Double, String.Single,
+                      Text, Name.Attribute, Text)),
 
             # A definition-list term (`::`) and its definition (`:`).
             (r'^(' + _MARGIN + r')(::)([ \t]+)', bygroups(Text, Punctuation, Text), 'heading'),
@@ -395,14 +411,17 @@ class CarveLexer(RegexLexer):
             # Task items before plain bullets, so the state marker is its own
             # token. The state is any single character, not only a space or an
             # x: `[>]` is deferred and `[-]` is dropped.
-            (r'^(' + _MARGIN + r')((?:[-*+]|\d+[.)]|[A-Za-z]+[.)])(?:' + _ATTRS + r')?)'
+            (r'^(' + _MARGIN + r')((?:[-*]|\d+[.)]|[A-Za-z]+[.)])(?:' + _ATTRS + r')?)'
              r'([ \t]+)(\[[^\]\n]\])',
              bygroups(Text, Punctuation, Text, Name.Constant)),
 
             # Bullets. A run of markers on one line opens nested lists at once
             # (`- - A`), and attributes may be glued straight onto the marker.
-            (r'^(' + _MARGIN + r')((?:[-*+][ \t]+)*[-*+](?:' + _ATTRS + r')?)(?=[ \t]|$)',
+            # `+` is not a bullet: `+ foo` is a paragraph.
+            (r'^(' + _MARGIN + r')((?:[-*][ \t]+)*[-*](?:' + _ATTRS + r')?)(?=[ \t]|$)',
              bygroups(Text, Punctuation)),
+            # A lone `+` is a `continuation_marker`, attaching the next block.
+            (r'^(' + _MARGIN + r')(\+)([ \t]*)$', bygroups(Text, Punctuation, Text)),
 
             # Ordered markers: numeric, alphabetic, roman, and the bare `.` that
             # continues the enclosing sequence. Any of them may carry glued
@@ -414,6 +433,8 @@ class CarveLexer(RegexLexer):
 
             # Tables. The header marker, the alignment run and the separator row
             # are their own tokens; cell content is lexed inline.
+            # A `continuation_row` ends in `|`; without one the line is prose.
+            (r'^(' + _MARGIN + r')(\+)(?=[^\n]*\|[ \t]*$)', bygroups(Text, Punctuation), 'tablerow'),
             (r'^(' + _MARGIN + r')(\|=[<>^v~]*)', bygroups(Text, Operator), 'tablerow'),
             (r'^(' + _MARGIN + r')(\|)', bygroups(Text, Punctuation), 'tablerow'),
 
@@ -487,7 +508,7 @@ class CarveLexer(RegexLexer):
         'markerrun': [
             (r'(?:\d+|[A-Za-z]+)[.)](?:' + _ATTRS + r')?', Number.Integer),
             (r'\.(?:' + _ATTRS + r')?', Number.Integer),
-            (r'[-*+](?:' + _ATTRS + r')?', Punctuation),
+            (r'[-*](?:' + _ATTRS + r')?', Punctuation),
             (r'>+', Punctuation),
             (r'[ \t]+', Text),
         ],
@@ -496,17 +517,6 @@ class CarveLexer(RegexLexer):
         'defbody': [
             (r'$', Text, '#pop'),
             include('inline'),
-        ],
-
-        'linkdest': [
-            (r'$', Text, '#pop'),
-            (r'<[^>\n]*>', Name.Tag),
-            (r'"[^"\n]*"', String.Double),
-            (r'[^\s\n]+', Name.Tag),
-            # Any Unicode whitespace, not only space and tab: a destination can
-            # be preceded by U+202F and friends, and a class of two characters
-            # leaves the state with nothing to match.
-            (r'[^\S\n]+', Text),
         ],
 
         # ------------------------------------------------------------------
