@@ -126,6 +126,10 @@ PINS = [
         [(Punctuation, '{='), (Generic.Inserted, 'mark'), (Punctuation, '=}')]),
     Pin('critic insert', 'a {+ins+} b',
         [(Punctuation, '{+'), (Generic.Inserted, 'ins'), (Punctuation, '+}')]),
+    Pin('braced en dash', 'a {--}x-} b',
+        [(Punctuation, '{--}')],
+        note='Ahead of the deletion, which would otherwise read `{--}x-}` as '
+             'deleting `-}x`.'),
     Pin('critic delete', 'a {-del-} b',
         [(Punctuation, '{-'), (Generic.Deleted, 'del'), (Punctuation, '-}')]),
     Pin('template span', 'a {%tpl%} b',

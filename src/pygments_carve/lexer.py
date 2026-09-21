@@ -575,6 +575,9 @@ class CarveLexer(RegexLexer):
             (r'(\{,)([^\n]+?)(,\})', bygroups(Punctuation, Generic.Emph, Punctuation)),
             (r'(\{=)([^\n]+?)(=\})', bygroups(Punctuation, Generic.Inserted, Punctuation)),
             (r'(\{\+)([^\n]+?)(\+\})', bygroups(Punctuation, Generic.Inserted, Punctuation)),
+            # The braced en dash. A deletion needs content, so `{--}` is never
+            # one, and `{--}x-}` is a dash followed by text, not a deletion.
+            (r'\{--\}', Punctuation),
             (r'(\{-)([^\n]+?)(-\})', bygroups(Punctuation, Generic.Deleted, Punctuation)),
             (r'(\{%)(.*?)(%\})', bygroups(Comment.Preproc, Comment, Comment.Preproc)),
 
@@ -705,7 +708,7 @@ class CarveLexer(RegexLexer):
             (r'[ \t]+', Text),
             (r'#[A-Za-z_][A-Za-z0-9_-]*', Name.Label),
             (r'(@[A-Za-z_][A-Za-z0-9_-]*)(:)([^\s}]+)',
-             bygroups(Name.Attribute, Punctuation, Literal)),
+             bygroups(Name.Variable, Punctuation, Literal)),
             (r'[^\s}]+', Text),
         ],
 
