@@ -58,8 +58,9 @@ from pygments.token import (
 __all__ = ['CarveLexer']
 
 #: A leading margin. A byte order mark at the start of a document is not
-#: content, so a block opener behind one is still a block opener.
-_MARGIN = r'[ \t\ufeff]*'
+#: content, so a block opener behind one is still a block opener. Anywhere else
+#: it is content, and the line is a paragraph.
+_MARGIN = r'(?:\A\ufeff)?[ \t]*'
 
 #: One attribute block, brace to brace. Quoted values may contain a brace and
 #: an escaped quote, so the value alternatives come before the bare-character
@@ -69,9 +70,14 @@ _ATTRS = (
     r'"(?:[^"\\\n]|\\.)*"'
     r"|'(?:[^'\\\n]|\\.)*'"
     r'|\{[^{}\n]*\}'
-    r'|[^{}\n]'
+    r'|(?!(?<=[{\s])[.#](?!\w[\w-]*[\s}]))[^{}\n]'
     r')*\}'
 )
+
+#: The block before the id and class check above. Only the reference definition
+#: uses it: whether an invalid block there still leaves a definition is open in
+#: markup-carve/carve#2122.
+_ATTRS_UNCHECKED = _ATTRS.replace(r'(?!(?<=[{\s])[.#](?!\w[\w-]*[\s}]))', '')
 
 
 #: The same block, as a STANDALONE ATTRIBUTE LINE, which may span lines:
@@ -127,18 +133,23 @@ _FENCE_INFO = (
 _FENCE_BODY_LINES = 512
 
 
+#: An ordered marker's value: a letter, or a roman run in ONE case (`Vim.` is
+#: prose).
+_ORDINAL = r'(?:\d+|[A-Za-z]|[ivxlcdm]+|[IVXLCDM]+)'
+
 #: A run of block markers a line may carry before its content: bullets, ordered
 #: markers and quote markers, in any nesting. A definition written after one is
 #: still a definition (`- [t]: /t`), so the definition rules take this prefix
 #: rather than losing the line to the marker rules below them.
-_MARKER = (
-    r'(?:'
-    r'>+'
-    r'|(?:\d+|[A-Za-z]+)[.)](?:' + _ATTRS + r')?'
-    r'|[-*.](?:' + _ATTRS + r')?'
-    r')'
+_MARKER_RUN = (
+    r'(?:(?:>+|(?:' + _ORDINAL + r'[.)]|[-*.])(?:' + _ATTRS + r')?)[ \t]+)*'
 )
-_MARKER_RUN = r'(?:' + _MARKER + r'[ \t]+)*'
+
+#: A line that opens some other block, which ends a definition list.
+_OTHER_OPENER = (
+    r'(?:#{1,6}[ \t]|`{3,}|~{3,}|:{3,}|>|\^[ \t]|\||%%|\*\[|\[[^\]\n]*\]:'
+    r'|(?:[-*]|' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')? )'
+)
 
 
 #: Unicode `White_Space`, which ends a link destination. Python's `\s` also
@@ -244,7 +255,7 @@ class CarveLexer(RegexLexer):
             # opener is at column 0, and an opener with no closer then
             # backtracks exponentially: 22 such lines took 0.8s, and each
             # further line doubles it.
-            (r'^(\ufeff?)([ \t]*)(%%%+)([^\n]*)(\n)'
+            (r'^((?:\A\ufeff)?)([ \t]*)(%%%+)([^\n]*)(\n)'
              r'((?:\2[^\n]*\n|(?!\2)[ \t]*\n)*?)'
              r'(\2)(\3)(?!%)([^\n]*)',
              bygroups(Text, Text, Comment.Preproc, Comment, Text,
@@ -307,7 +318,7 @@ class CarveLexer(RegexLexer):
             # verbatim. It is emitted as one token including the `=`, because
             # the format word without its sigil is not the construct. It takes
             # no title and no label, so its guard is the format word alone.
-            (r'^(\ufeff?)([ \t]*)((`|~)\4{2,})'
+            (r'^((?:\A\ufeff)?)([ \t]*)((`|~)\4{2,})'
              r'(?= ?=[a-zA-Z][\w+.-]*[ \t]*$)'
              r'([ \t]*)(=[a-zA-Z][\w+.-]*)([^\n]*)(\n)'
              r'((?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?)'
@@ -315,7 +326,7 @@ class CarveLexer(RegexLexer):
              bygroups(Text, Text, Punctuation, None, Text, Keyword.Type,
                       using(this, state='infostring'), Text,
                       using(this, state='fencebody'), Text, Punctuation, Text)),
-            (r'^(\ufeff?)([ \t]*)((`|~)\4{2,})'
+            (r'^((?:\A\ufeff)?)([ \t]*)((`|~)\4{2,})'
              r'(?= ?(?:' + _FENCE_INFO + r')?[ \t]*$)'
              r'([ \t]*)([a-zA-Z][\w+#.-]*)?([^\n]*)(\n)'
              r'((?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?)'
@@ -385,7 +396,7 @@ class CarveLexer(RegexLexer):
             # No marker run on the abbreviation form: an abbreviation is defined
             # at document level only, so `- *[HTML]: ...` and `> *[HTML]: ...`
             # are paragraph text (corpus 179, 180).
-            (r'^(' + _MARGIN + r')(\*\[)([^\]\n]+)(\]:)( )(?![ \t]*$)',
+            (r'^(' + _MARGIN + r')(\*\[)([A-Za-z0-9]+)(\]:)( )(?![ \t]*$)',
              bygroups(Text, Punctuation, Name.Entity, Punctuation, Text), 'defbody'),
             # A link reference definition only where the line COMPLETES the
             # production: a title and an attribute block each behind exactly one
@@ -395,30 +406,32 @@ class CarveLexer(RegexLexer):
             (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\[)(?!@)([^\]\n]+)(\]:)'
              r'( [' + _LINE_SPACE + r']*)([^' + _WHITE_SPACE + r']+)'
              r'(?:( )(?:("(?:\\"|[^"\n])*")|(\'(?:\\\'|[^\'\n])*\')))?'
-             r'(?:( )(' + _ATTRS + r'))?([ \t]*)$',
+             r'(?:( )(' + _ATTRS_UNCHECKED + r'))?([ \t]*)$',
              bygroups(Text, using(this, state='markerrun'), Punctuation, Name.Label,
                       Punctuation, Text, Name.Tag, Text, String.Double, String.Single,
                       Text, Name.Attribute, Text)),
 
-            # A definition-list term (`::`) and its definition (`:`).
-            (r'^(' + _MARGIN + r')(::)([ \t]+)', bygroups(Text, Punctuation, Text), 'heading'),
-            (r'^(' + _MARGIN + r')(:)(?=[ \t])', bygroups(Text, Punctuation)),
+            # A definition-list term. Its `:` descriptions are scoped only in
+            # the `deflist` state it opens, so a `:` line with no term above it
+            # stays a paragraph.
+            (r'^(' + _MARGIN + r')(::)( +[ \t]*)(?=[^ \t\n])',
+             bygroups(Text, Punctuation, Text), ('deflist', 'heading')),
 
             # Blockquote marker. A marker must be followed by a space or end the
             # line; `>foo` is a paragraph.
             (r'^(' + _MARGIN + r')(>+)(?=[ \t]|$)', bygroups(Text, Punctuation), 'quoteline'),
 
             # Task items before plain bullets, so the state marker is its own
-            # token. The state is any single character, not only a space or an
-            # x: `[>]` is deferred and `[-]` is dropped.
-            (r'^(' + _MARGIN + r')((?:[-*]|\d+[.)]|[A-Za-z]+[.)])(?:' + _ATTRS + r')?)'
-             r'([ \t]+)(\[[^\]\n]\])',
+            # token. Only a bullet takes one, and only the `task_state` set.
+            (r'^(' + _MARGIN + r')([-*](?:' + _ATTRS + r')?)'
+             r'( +)(\[[ xX_>?-]\])(?= +[ \t]*[^ \t\n])',
              bygroups(Text, Punctuation, Text, Name.Constant)),
 
             # Bullets. A run of markers on one line opens nested lists at once
             # (`- - A`), and attributes may be glued straight onto the marker.
-            # `+` is not a bullet: `+ foo` is a paragraph.
-            (r'^(' + _MARGIN + r')((?:[-*][ \t]+)*[-*](?:' + _ATTRS + r')?)(?=[ \t]|$)',
+            # `+` is not a bullet: `+ foo` is a paragraph. Every list marker
+            # needs a space and then content.
+            (r'^(' + _MARGIN + r')((?:[-*] +)*[-*](?:' + _ATTRS + r')?)(?= +[ \t]*[^ \t\n])',
              bygroups(Text, Punctuation)),
             # A lone `+` is a `continuation_marker`, attaching the next block.
             (r'^(' + _MARGIN + r')(\+)([ \t]*)$', bygroups(Text, Punctuation, Text)),
@@ -426,9 +439,9 @@ class CarveLexer(RegexLexer):
             # Ordered markers: numeric, alphabetic, roman, and the bare `.` that
             # continues the enclosing sequence. Any of them may carry glued
             # attributes.
-            (r'^(' + _MARGIN + r')((?:\d+|[A-Za-z]+)[.)](?:' + _ATTRS + r')?)(?=[ \t]|$)',
+            (r'^(' + _MARGIN + r')(' + _ORDINAL + r'[.)](?:' + _ATTRS + r')?)(?= +[ \t]*[^ \t\n])',
              bygroups(Text, Number.Integer)),
-            (r'^(' + _MARGIN + r')(\.(?:' + _ATTRS + r')?)(?=[ \t]|$)',
+            (r'^(' + _MARGIN + r')(\.(?:' + _ATTRS + r')?)(?= +[ \t]*[^ \t\n])',
              bygroups(Text, Number.Integer)),
 
             # Tables. The header marker, the alignment run and the separator row
@@ -442,6 +455,17 @@ class CarveLexer(RegexLexer):
             (r'^(' + _MARGIN + r')(' + _ATTRS_LINE + r')', bygroups(Text, Name.Attribute)),
 
             include('inline'),
+        ],
+
+        # Inside a definition list, from its first term to a blank line that
+        # no `:` or `::` line follows, or to a line that opens another block.
+        'deflist': [
+            (r'^(?=' + _MARGIN + _OTHER_OPENER + r')', Text, '#pop'),
+            (r'^[ \t]*\n(?![ \t]*(?:\n|::? ))', Text, '#pop'),
+            (r'^(' + _MARGIN + r')(::)( +[ \t]*)(?=[^ \t\n])',
+             bygroups(Text, Punctuation, Text), 'heading'),
+            (r'^(' + _MARGIN + r')(:)(?= +[ \t]*[^ \t\n])', bygroups(Text, Punctuation)),
+            include('block'),
         ],
 
         # A fence body, reached only through the whole-fence rules above, which
@@ -506,7 +530,7 @@ class CarveLexer(RegexLexer):
         # The marker run a definition line may carry, tokenized the way the
         # marker rules in `block` tokenize the same markers on their own.
         'markerrun': [
-            (r'(?:\d+|[A-Za-z]+)[.)](?:' + _ATTRS + r')?', Number.Integer),
+            (_ORDINAL + r'[.)](?:' + _ATTRS + r')?', Number.Integer),
             (r'\.(?:' + _ATTRS + r')?', Number.Integer),
             (r'[-*](?:' + _ATTRS + r')?', Punctuation),
             (r'>+', Punctuation),
@@ -657,8 +681,10 @@ class CarveLexer(RegexLexer):
             #
             # The combined `/*` opener is guarded on its OUTER `/`, which is
             # where the grammar puts it: "the boundary guards apply to the
-            # OUTER `/`; the inner `*` is part of the two-char token".
-            (r'(?<![\w/])(/\*)([^\n]+?)(\*/)(?![^\W_])',
+            # OUTER `/`; the inner `*` is part of the two-char token". A space
+            # after the opener or before the closer leaves an italic holding
+            # literal asterisks: `a /* b */ c` is `<em>* b *</em>`.
+            (r'(?<![\w/])(/\*)(?!\s)([^\n]+?)(?<!\s)(\*/)(?![^\W_])',
              bygroups(Punctuation, Generic.Strong, Punctuation)),
             (r'(?<![\w*])(\*/)([^\n]+?)(/\*)(?![^\W_])',
              bygroups(Punctuation, Generic.Strong, Punctuation)),

@@ -183,11 +183,6 @@ PINS = [
          (Name.Tag, '/url')]),
     Pin('definition-list term', ':: Term\n',
         [(Punctuation, '::'), (Generic.Heading, 'Term')]),
-    Pin('definition-list definition', ': def\n',
-        [(Punctuation, ':')],
-        note='The marker is the whole construct here: with the rule gone the '
-             'colon is plain text and nothing else in the suite read it '
-             '(markup-carve/pygments-carve#41).'),
     Pin('blockquote marker', '> quoted\n',
         [(Punctuation, '>'), (Generic.Emph, ' quoted')]),
     Pin('task item', '- [x] done\n',
@@ -373,7 +368,7 @@ def test_the_corpus_reads_the_two_rules_the_ticket_was_filed_on():
         '326-a-column-0-line-after-a-container-s-last-block-when-that-block-'
         'left-no-paragraph-open-4',
     ]
-    assert len(_changed(MUTANTS[_rule('definition-list definition')],
+    assert len(_changed(DEFLIST_MUTANTS[_deflist_rule('description')],
                         limit=51)) == 51
 
 
@@ -428,6 +423,10 @@ GUARDS = [
            (Comment.Special, 't: x\n'), (Punctuation, '---')]),
     # The blank-line guard changes no token at all; what it changes is the cost.
     # `test_the_blank_line_guard_is_what_bounds_the_closer_search` is its pin.
+    Guard('a comment fence skips a byte order mark only at offset 0', 1, r'\A', 0,
+          'p\n\n\ufeff%%%\nhidden\n%%%\n',
+          [(Comment.Preproc, '%%'), (Comment, '%'), (Comment.Preproc, '%%'), (Comment, '%')],
+          [(Comment.Preproc, '%%%'), (Comment, 'hidden\n'), (Comment.Preproc, '%%%')]),
     Guard('a blank line inside a comment fence is not tried twice', 1, r'(?!\2)', 0),
     Guard('a wider run does not close a narrower comment fence', 1, '(?!%)', 0,
           '%%%\nhidden\n%%%%\n',
@@ -435,6 +434,11 @@ GUARDS = [
            (Comment.Preproc, '%%'), (Comment, '%%')],
           [(Comment.Preproc, '%%%'), (Comment, 'hidden\n'),
            (Comment.Preproc, '%%%'), (Comment, '%')]),
+    Guard('a raw fence skips a byte order mark only at offset 0', 3, r'\A', 0,
+          'p\n\n\ufeff```=html\nx\n```\n',
+          [(Punctuation, '`'), (Punctuation, '`'), (Punctuation, '```')],
+          [(Punctuation, '```'), (Keyword.Type, '=html'),
+           (String.Backtick, 'x\n'), (Punctuation, '```')]),
     Guard('a raw block takes no title', 3, r"(?= ?=[a-zA-Z][\w+.-]*[ \t]*$)", 0,
           '```=html "T"\npayload\n```\n',
           [(Punctuation, '```'), (Keyword.Type, '=html'), (Punctuation, '```')],
@@ -446,6 +450,10 @@ GUARDS = [
            (Punctuation, '```'), (Name.Builtin, 'junk')],
           [(Punctuation, '```'), (Keyword.Type, '=html'),
            (String.Backtick, 'x\n'), (Punctuation, '```')]),
+    Guard('a code fence skips a byte order mark only at offset 0', 4, r'\A', 0,
+          'p\n\n\ufeff```\nx\n```\n',
+          [(Punctuation, '`'), (Punctuation, '`'), (Punctuation, '```')],
+          [(Punctuation, '```'), (String.Backtick, 'x\n'), (Punctuation, '```')]),
     Guard('an info string outside the three shapes opens no block', 4,
           r"(?= ?(?:' + _FENCE_INFO + r')?[ \t]*$)", 0,
           '```js bad\ncode\n```\n',
@@ -478,23 +486,50 @@ GUARDS = [
           '[a]: /u zzz\n', [],
           [(Punctuation, '['), (Name.Label, 'a'), (Punctuation, ']:'),
            (Name.Tag, '/u')]),
-    Guard('a definition marker needs a space after it', 18, r'(?=[ \t])', 0,
-          ':foo\n', [], [(Punctuation, ':')]),
-    Guard('a blockquote marker needs a space after it', 19, r'(?=[ \t]|$)', 0,
+    Guard('a definition-list term needs content', 17, r'(?=[^ \t\n])', 0,
+          ':: \n', [], [(Punctuation, '::')]),
+    Guard('a blockquote marker needs a space after it', 18, r'(?=[ \t]|$)', 0,
           '>foo\n', [], [(Punctuation, '>'), (Generic.Emph, 'foo')]),
-    Guard('a bullet needs a space after it', 21, r'(?=[ \t]|$)', 0,
-          '-foo\n', [], [(Punctuation, '-')]),
-    Guard('a continuation marker is alone on its line', 22, '$', 0,
+    Guard('a task item needs content', 19, r'(?= +[ \t]*[^ \t\n])', 0,
+          '- [x] \n', [(Punctuation, '-')],
+          [(Punctuation, '-'), (Name.Constant, '[x]')]),
+    Guard('a bullet needs content', 20, r'(?= +[ \t]*[^ \t\n])', 0,
+          '- \n', [], [(Punctuation, '-')]),
+    Guard('a continuation marker is alone on its line', 21, '$', 0,
           '+ foo\n', [], [(Punctuation, '+')]),
-    Guard('an ordered marker needs a space after it', 23, r'(?=[ \t]|$)', 0,
-          '1.foo\n', [], [(Number.Integer, '1.')]),
-    Guard('a bare ordinal needs a space after it', 24, r'(?=[ \t]|$)', 0,
-          '.foo\n', [], [(Number.Integer, '.')]),
-    Guard('a continuation row ends in a pipe', 25, r'(?=[^\n]*\|[ \t]*$)', 0,
+    Guard('an ordered marker needs content', 22, r'(?= +[ \t]*[^ \t\n])', 0,
+          '1. \n', [], [(Number.Integer, '1.')]),
+    Guard('a bare ordinal needs content', 23, r'(?= +[ \t]*[^ \t\n])', 0,
+          '. \n', [], [(Number.Integer, '.')]),
+    Guard('a continuation row ends in a pipe', 24, r'(?=[^\n]*\|[ \t]*$)', 0,
           '+ foo\n', [], [(Punctuation, '+')]),
 ]
 
 SAMPLED = [g for g in GUARDS if g.sample is not None]
+
+
+#: Readings from carveToHtml and the spec oracle: none of these opens a task.
+@pytest.mark.parametrize('sample', [
+    '- [a] x\n',       # not a `task_state`
+    '- [a]: /u zzz\n',
+    '1. [x] y\n',      # an ordered item takes no task marker
+    '- [x]\ty\n',      # the separator after `]` is a space
+])
+def test_a_task_marker_is_a_task_state_on_a_bullet(sample):
+    assert Name.Constant not in dict(scoped_run(LEXER, sample))
+
+
+@pytest.mark.parametrize('sample,expect', [
+    ('-\ta\n', ()),
+    ('*\ta\n', ()),
+    ('1.\ta\n', ()),
+    ('.\ta\n', ()),
+    ('- -\ta\n', ((Punctuation, '-'),)),
+    ('-\t- a\n', ()),
+])
+def test_a_list_marker_separator_is_a_space(sample, expect):
+    """A tab after a marker leaves it text (carveToHtml)."""
+    assert scoped_run(LEXER, sample) == expect
 
 
 def _guarded(guard):
@@ -584,3 +619,111 @@ def test_the_blank_line_guard_is_what_keeps_the_fence_search_cheap():
         'without the guard the same eight lines are expected to be far more '
         'than eight times the work (measured 180x); they were %.2fx, so this '
         'pin is measuring something else.' % unguarded_ratio)
+
+
+# ----------------------------------------------------------------------------
+# The definition-list state
+# ----------------------------------------------------------------------------
+
+DEFLIST = 'deflist'
+DEFLIST_RULES = state_rules(SOURCE, DEFLIST)
+
+#: One pin per rule of `deflist`, in order, as `PINS` is for `block`.
+DEFLIST_PINS = [
+    Pin('another block opener', ':: T\n# H\n: e\n',
+        [(Punctuation, '::'), (Generic.Heading, 'T'),
+         (Punctuation, '#'), (Generic.Heading, 'H')]),
+    Pin('a blank line before prose', ':: T\n: d\n\np\n: e\n',
+        [(Punctuation, '::'), (Generic.Heading, 'T'), (Punctuation, ':')]),
+    Pin('a later term', ':: a\n:: b\n\np\n: e\n',
+        [(Punctuation, '::'), (Generic.Heading, 'a'),
+         (Punctuation, '::'), (Generic.Heading, 'b')],
+        note='Without it the block rule pushes a second `deflist`, and one '
+             'blank line pops only one of them.'),
+    Pin('description', ':: T\n: d\n',
+        [(Punctuation, '::'), (Generic.Heading, 'T'), (Punctuation, ':')]),
+    Pin('the included block state', ':: T\n: d *x*\n',
+        [(Punctuation, '::'), (Generic.Heading, 'T'), (Punctuation, ':'),
+         (Punctuation, '*'), (Generic.Strong, 'x'), (Punctuation, '*')]),
+]
+
+DEFLIST_MUTANTS = [build_lexer(without_rule(SOURCE, i, DEFLIST))
+                   for i in range(len(DEFLIST_RULES))]
+
+
+def _deflist_rule(name):
+    return [i for i, pin in enumerate(DEFLIST_PINS) if pin.name == name][0]
+
+
+def test_every_deflist_rule_has_a_pin():
+    assert len(DEFLIST_PINS) == len(DEFLIST_RULES)
+
+
+@pytest.mark.parametrize('pin', DEFLIST_PINS, ids=_named)
+def test_deflist_pin_holds(pin):
+    assert scoped_run(LEXER, pin.sample) == pin.expect
+
+
+@pytest.mark.parametrize('index', range(len(DEFLIST_PINS)),
+                         ids=[p.name for p in DEFLIST_PINS])
+def test_deflist_pin_is_sharp(index):
+    pin = DEFLIST_PINS[index]
+    assert scoped_run(DEFLIST_MUTANTS[index], pin.sample) != pin.expect, (
+        'deflist rule %d was deleted and pin %r still holds.' % (index, pin.name))
+
+
+DEFLIST_GUARDS = [
+    Guard('only another block opener ends the list', 0,
+          "(?=' + _MARGIN + _OTHER_OPENER + r')", 0,
+          ':: T\n: d\n',
+          [(Punctuation, '::'), (Generic.Heading, 'T'), (Punctuation, ':')],
+          [(Punctuation, '::'), (Generic.Heading, 'T')]),
+    Guard('a blank line before a description keeps the list open', 1,
+          r'(?![ \t]*(?:\n|::? ))', 0,
+          ':: T\n: d\n\n: e\n',
+          [(Punctuation, '::'), (Generic.Heading, 'T'),
+           (Punctuation, ':'), (Punctuation, ':')],
+          [(Punctuation, '::'), (Generic.Heading, 'T'), (Punctuation, ':')]),
+    Guard('a later term needs content', 2, r'(?=[^ \t\n])', 0,
+          ':: T\n:: \n',
+          [(Punctuation, '::'), (Generic.Heading, 'T')],
+          [(Punctuation, '::'), (Generic.Heading, 'T'), (Punctuation, '::')]),
+    Guard('a description needs a space and content', 3, r'(?= +[ \t]*[^ \t\n])', 0,
+          ':: T\n: \n',
+          [(Punctuation, '::'), (Generic.Heading, 'T')],
+          [(Punctuation, '::'), (Generic.Heading, 'T'), (Punctuation, ':')]),
+]
+
+
+def test_every_deflist_guard_clause_is_pinned():
+    found = collections.Counter(
+        (i, clause) for i, (_, _, text) in enumerate(DEFLIST_RULES)
+        for clause in CLAUSE.findall(text))
+    assert found == collections.Counter((g.index, g.clause) for g in DEFLIST_GUARDS)
+
+
+@pytest.mark.parametrize('guard', DEFLIST_GUARDS, ids=_guarded)
+def test_the_deflist_guard_refuses_the_shape(guard):
+    assert scoped_run(LEXER, guard.sample) == guard.refused
+
+
+@pytest.mark.parametrize('guard', DEFLIST_GUARDS, ids=_guarded)
+def test_removing_the_deflist_guard_takes_the_shape(guard):
+    mutant = build_lexer(
+        without_clause(SOURCE, guard.index, guard.clause, guard.occurrence, DEFLIST))
+    assert scoped_run(mutant, guard.sample) == guard.taken
+
+
+@corpus
+@pytest.mark.parametrize('index', range(len(DEFLIST_PINS)),
+                         ids=[p.name for p in DEFLIST_PINS])
+def test_the_corpus_notices_a_deleted_deflist_rule(index):
+    """No corpus document has a blank line after two terms and then prose, so
+    the later-term rule is held by its pin alone."""
+    changed = _changed(DEFLIST_MUTANTS[index], limit=1)
+    if index == _deflist_rule('a later term'):
+        assert not changed, 'the corpus now sees the later-term rule; drop this exception'
+    else:
+        assert changed, (
+            'deleting deflist rule %d (%r) changes no corpus document.'
+            % (index, DEFLIST_PINS[index].name))

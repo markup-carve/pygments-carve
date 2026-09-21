@@ -183,3 +183,21 @@ def test_a_reference_definition_scopes_its_title_and_attributes():
 @pytest.mark.parametrize('line', ['[^a]: \n', '*[A]: \n'])
 def test_a_footnote_or_abbreviation_needs_content(line):
     assert (Punctuation, ']:') not in run(line)
+
+
+def test_an_invalid_class_on_a_reference_definition_is_left_as_it_was():
+    """Status quo, not a ruling: markup-carve/carve#2122 decides whether an
+    invalid block after the destination still leaves a definition."""
+    assert _reads_as_reference_definition('[a]: /u {.a:b}')
+
+
+@pytest.mark.parametrize('line', ['*[ß]: sharp s\n', '*[H T]: x\n', '*[e.g.]: x\n'])
+def test_an_abbreviation_term_is_one_ascii_alphanumeric_word(line):
+    """corpus 223-an-abbreviation-term-is-one-ascii-alphanumeric-word-2."""
+    assert (Punctuation, '*[') not in run(line)
+
+
+@pytest.mark.parametrize('line', ['Ab. [t]: /t\n', 'Vim. [^a]: n\n'])
+def test_a_definition_behind_a_non_marker_is_prose(line):
+    """`Ab.` and `Vim.` are not ordered markers, so the line is a paragraph."""
+    assert (Punctuation, ']:') not in run(line)
