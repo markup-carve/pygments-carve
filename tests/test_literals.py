@@ -37,6 +37,12 @@ OTHER_CONSTRUCT = {
         (Generic.Emph, _ITALIC),
     'a mirrored bold-italic opener glued to a word opens nothing':
         (Generic.Emph, _ITALIC),
+    'a space after the bold-italic opener is not a combined run':
+        (Generic.Emph, _ITALIC),
+    'a space before the bold-italic closer is not a combined run':
+        (Generic.Emph, _ITALIC),
+    'a space after the bold-italic opener is refused by that guard alone':
+        (Generic.Emph, _ITALIC),
     'a colon in an attribute id':
         (Name.Variable.Instance, 'the engine renders `#a` as a tag'),
     'a quoted title makes a figure opener a generic container':
@@ -50,31 +56,9 @@ OTHER_CONSTRUCT = {
         (Punctuation, 'a `continuation_marker`'),
 }
 
-_TICKET = 'markup-carve/pygments-carve#52'
-_COMBINED = 'read as a combined run; the engine renders an italic'
-_LETTERS = 'any letter run is taken as an ordered marker'
-_NO_CONTENT = 'a marker needs content after its attribute block'
-_NO_TERM = 'no term gate on the `:` marker'
-_BOM = 'a U+FEFF is skipped at every line start, not only offset 0'
-
-#: row name -> why this lexer still scopes the payload. All in ``_TICKET``.
-KNOWN_DIVERGENCES = {
-    'a space after the bold-italic opener is not a combined run': _COMBINED,
-    'a space before the bold-italic closer is not a combined run': _COMBINED,
-    'a space after the bold-italic opener is refused by that guard alone': _COMBINED,
-    'bullet whose attribute block has no content after it': _NO_CONTENT,
-    'mixed-case roman run is not a marker': _LETTERS,
-    'mixed-case roman run is not a marker, other order': _LETTERS,
-    'a two-letter mixed-case roman run is not a marker': _LETTERS,
-    'ordered marker whose attribute block has no content after it': _NO_CONTENT,
-    'bare dot marker whose attribute block has no content after it': _NO_CONTENT,
-    'a description line after plain prose has no term above it': _NO_TERM,
-    'a description line below a tab-disqualified term marker': _NO_TERM,
-    'a colon in an attribute class': 'the attribute block admits an invalid class name',
-    'a dash-first id': 'the attribute block admits an invalid id',
-    'a byte order mark below the first line': _BOM,
-    'a byte order mark below the first line of a definition list': _BOM,
-}
+#: row name -> why this lexer still scopes the payload. Empty since
+#: markup-carve/pygments-carve#52.
+KNOWN_DIVERGENCES = {}
 
 LEXER = CarveLexer()
 LITERALS = inventory.load_literals() if inventory.available() else []
@@ -104,7 +88,7 @@ def test_literal_is_not_scoped_as_a_construct(literal):
     if name in KNOWN_DIVERGENCES:
         assert scope is not None, (
             '%r now lexes as text. Delete its KNOWN_DIVERGENCES entry.' % name)
-        pytest.xfail('%s (%s)' % (KNOWN_DIVERGENCES[name], _TICKET))
+        pytest.xfail(KNOWN_DIVERGENCES[name])
 
     assert scope is None, (
         'carve-grammars rules %r not to be the construct it resembles, and this '

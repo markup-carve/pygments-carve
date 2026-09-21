@@ -33,17 +33,20 @@ The suites, and the split matters:
   sharp from inside the suite rather than asserted. Before it, sixteen of those
   rules could be deleted outright with the suite green
   (markup-carve/pygments-carve#25).
-- **`test_block_rules.py`** does the same for the 30 rules of the block state,
-  and adds the two things that state needs. A CORPUS GATE, which needs nobody to
-  write a sample: deleting a block rule must change the lexer's reading of at
-  least one corpus document, and 29 of the 30 do - the exception is the lone raw
-  fence line, recorded by name so it is known rather than assumed. And one pin
+- **`test_block_rules.py`** does the same for the rules of the block state and
+  of the `deflist` state a definition-list term opens, and adds the two things
+  those states need. A CORPUS GATE, which needs nobody to write a sample:
+  deleting a rule must change the lexer's reading of at least one corpus
+  document, and all but two do - the lone raw fence line and the `deflist`
+  term, both recorded by name so they are known rather than assumed. And one pin
   per GUARD CLAUSE, each proved by removing that clause alone: deleting a rule
   tests whether the rule exists and can never test a refusal, since a rule that
   is gone refuses everything its guard refused. Before it, the `-` thematic
   break and the definition-list `:` marker could both be deleted with the suite
   green, though deleting the marker changes how 96 corpus documents are read
-  (markup-carve/pygments-carve#41).
+  (markup-carve/pygments-carve#41). A `:` description line is scoped only inside
+  `deflist`, which is how a colon line with no term above it stays prose
+  (markup-carve/pygments-carve#52).
 - **`test_typography.py`** reads the `arrow`, `comparison` and
   `typographic_symbol` productions out of `spec/resources/grammar.ebnf` in
   place, requires every alternative to be scoped as ONE token holding exactly
