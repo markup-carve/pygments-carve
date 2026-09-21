@@ -14,7 +14,7 @@ still come out as plain content, or the fix has over-matched.
 
 import pytest
 
-from pygments.token import Generic, Name, Number, Punctuation, Text
+from pygments.token import Generic, Name, Number, Punctuation, String, Text
 
 from pygments_carve import CarveLexer
 
@@ -121,3 +121,65 @@ def test_a_second_footnote_definition_is_still_a_definition():
         (Name.Label, 'b'),
         (Punctuation, ']:'),
     ]
+
+
+# ----------------------------------------------------------------------------
+# A line is a reference definition only if it completes the production
+# (markup-carve/pygments-carve#51). Readings from grammar.ebnf and carveToHtml.
+# ----------------------------------------------------------------------------
+
+REFERENCE_SHAPES = [
+    ('[a]: /u', True),
+    ('[a]: /u "T"', True),
+    ("[a]: /u 'T'", True),
+    ('[a]: /u "a\\"b"', True),
+    ('[a]: /u {.c}', True),
+    ('[a]: /u "T" {.c}', True),
+    ('[a]: /u \t', True),
+    ('[a]:  /u', True),
+    ('[a]:  /u', True),
+    ('[a]: /u﻿', True),
+    ('[a]: /u{.c}', True),
+    ('[^]: /u', True),
+    ('[a^b]: /u', True),
+    ('[a]: /u zzz', False),
+    ('[a]: /u  "T"', False),
+    ('[a]: /u "T" zzz', False),
+    ('[a]: /u "T"x', False),
+    ('[a]: /u "T', False),
+    ('[a]: /u  {.c}', False),
+    ('[a]: /u\t{.c}', False),
+    ('[a]: /u {.c} "T"', False),
+    # Not `attributes`, so leftover content (CARVE-P3-006).
+    ('[a]: /u {#}', False),
+    ('[a]: /u {.c}{.d}', False),
+    ('[a]: /u\xa0', False),
+    ('[a]: <x y>', False),
+    ('[a]: ', False),
+    ('[@a]: /u', False),
+    ('- [a]: /u zzz', False),
+]
+
+
+def _reads_as_reference_definition(line):
+    label = line[line.index('[') + 1:line.index(']')]
+    tokens = run(line + '\n')
+    opener = tokens.index((Punctuation, '[')) if (Punctuation, '[') in tokens else None
+    return opener is not None and tokens[opener:opener + 3] == [
+        (Punctuation, '['), (Name.Label, label), (Punctuation, ']:')]
+
+
+@pytest.mark.parametrize('line,defines', REFERENCE_SHAPES, ids=lambda v: repr(v))
+def test_a_reference_definition_completes_the_line(line, defines):
+    assert _reads_as_reference_definition(line) is defines
+
+
+def test_a_reference_definition_scopes_its_title_and_attributes():
+    assert run("[a]: /u 'T' {.c}\n") == LINK_DEFINITION[:1] + [
+        (Name.Label, 'a'), (Punctuation, ']:'), (Name.Tag, '/u'),
+        (String.Single, "'T'"), (Name.Attribute, '{.c}')]
+
+
+@pytest.mark.parametrize('line', ['[^a]: \n', '*[A]: \n'])
+def test_a_footnote_or_abbreviation_needs_content(line):
+    assert (Punctuation, ']:') not in run(line)

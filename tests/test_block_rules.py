@@ -194,10 +194,14 @@ PINS = [
         [(Punctuation, '-'), (Name.Constant, '[x]')]),
     Pin('bullet', '- item\n',
         [(Punctuation, '-')]),
+    Pin('continuation marker', '+\n',
+        [(Punctuation, '+')]),
     Pin('ordered marker', '1. item\n',
         [(Number.Integer, '1.')]),
     Pin('bare ordinal', '. item\n',
         [(Number.Integer, '.')]),
+    Pin('table continuation row', '+ a |\n',
+        [(Punctuation, '+'), (Punctuation, '|')]),
     Pin('table header row', '|= a | b\n',
         [(Operator, '|='), (Punctuation, '|')]),
     Pin('table row', '| a | b\n',
@@ -289,7 +293,7 @@ def test_pin_is_sharp(index):
     """Deleting the rule must stop its pin from holding.
 
     THE GATE PROVING IT CAN SAY NO. Without this the pins above are a claim;
-    with it, every one of the 28 block rules is known to be undeletable in
+    with it, every one of the 30 block rules is known to be undeletable in
     silence - which two of them were not (markup-carve/pygments-carve#41).
     """
     pin = PINS[index]
@@ -458,16 +462,36 @@ GUARDS = [
           [(Punctuation, '---')], [(Punctuation, '--- ')]),
     Guard('an underscore break is the whole line', 13, '$', 0, '___ text\n',
           [], [(Punctuation, '___ ')]),
+    Guard('a footnote definition needs content', 14, r'(?![ \t]*$)', 0,
+          '[^a]: \n',
+          [(Punctuation, '[^'), (Name.Label, 'a'), (Punctuation, ']')],
+          [(Punctuation, '[^'), (Name.Label, 'a'), (Punctuation, ']:')]),
+    Guard('an abbreviation definition needs content', 15, r'(?![ \t]*$)', 0,
+          '*[A]: \n', [],
+          [(Punctuation, '*['), (Name.Entity, 'A'), (Punctuation, ']:')]),
+    Guard('a reference label does not start with an at sign', 16, '(?!@)', 0,
+          '[@a]: /u\n',
+          [(Punctuation, '['), (Name.Variable, '@a'), (Punctuation, ']')],
+          [(Punctuation, '['), (Name.Label, '@a'), (Punctuation, ']:'),
+           (Name.Tag, '/u')]),
+    Guard('a reference definition ends at the end of the line', 16, '$', 0,
+          '[a]: /u zzz\n', [],
+          [(Punctuation, '['), (Name.Label, 'a'), (Punctuation, ']:'),
+           (Name.Tag, '/u')]),
     Guard('a definition marker needs a space after it', 18, r'(?=[ \t])', 0,
           ':foo\n', [], [(Punctuation, ':')]),
     Guard('a blockquote marker needs a space after it', 19, r'(?=[ \t]|$)', 0,
           '>foo\n', [], [(Punctuation, '>'), (Generic.Emph, 'foo')]),
     Guard('a bullet needs a space after it', 21, r'(?=[ \t]|$)', 0,
           '-foo\n', [], [(Punctuation, '-')]),
-    Guard('an ordered marker needs a space after it', 22, r'(?=[ \t]|$)', 0,
+    Guard('a continuation marker is alone on its line', 22, '$', 0,
+          '+ foo\n', [], [(Punctuation, '+')]),
+    Guard('an ordered marker needs a space after it', 23, r'(?=[ \t]|$)', 0,
           '1.foo\n', [], [(Number.Integer, '1.')]),
-    Guard('a bare ordinal needs a space after it', 23, r'(?=[ \t]|$)', 0,
+    Guard('a bare ordinal needs a space after it', 24, r'(?=[ \t]|$)', 0,
           '.foo\n', [], [(Number.Integer, '.')]),
+    Guard('a continuation row ends in a pipe', 25, r'(?=[^\n]*\|[ \t]*$)', 0,
+          '+ foo\n', [], [(Punctuation, '+')]),
 ]
 
 SAMPLED = [g for g in GUARDS if g.sample is not None]

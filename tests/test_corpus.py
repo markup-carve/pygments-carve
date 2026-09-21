@@ -19,13 +19,17 @@ the old docstring gave and the old assertion did not deliver: it measures a
 construct the day the spec pin brings it in, with nobody having to name it
 first.
 
-It is deliberately one-sided. A definition-SHAPED line the corpus leaves literal
-is not asserted the other way round, because the lexer over-colours some of them
+It is mostly one-sided. A definition-SHAPED line the corpus leaves literal is
+not asserted the other way round, because the lexer over-colours some of them
 knowingly - it carries no container model, so an indented definition at document
 level and a marker line folding into an open paragraph are out of its reach. The
 discrimination that matters is proved instead by
 ``test_the_gate_rejects_a_definition_whose_separator_is_broken``: the same reader
 must say NO to a mutated line, or it would be measuring nothing again.
+
+The exception is a reference definition at column 0 with no marker, where no
+container is involved: whether the line is a definition is decided by the line
+alone, so a literal one is asserted unscoped (markup-carve/pygments-carve#51).
 """
 
 import pathlib
@@ -112,3 +116,26 @@ def test_the_gate_rejects_a_definition_whose_separator_is_broken():
                 'gate does not discriminate' % (path.name, definition.line)
             )
     assert checked > 100, 'only %d mutations exercised' % checked
+
+
+def _column_zero_reference_literals():
+    for path in DOCUMENTS:
+        source, html = _case(path)
+        for d in corpusdefs.literals(source, html):
+            if d.opener == '[' and d.line.startswith('['):
+                yield path, source, d
+
+
+def test_a_literal_reference_definition_at_column_0_is_not_scoped():
+    """A line that does not complete `reference_definition` is a paragraph.
+
+    Trailing text, a second space before the title or attribute block, and a
+    tab there all leave the line literal (CARVE-P3-005), and the corpus pins
+    each shape (16-reference-link-5, 265-*, 266-*).
+    """
+    found = list(_column_zero_reference_literals())
+    scoped = [(path.name, d.line) for path, source, d in found
+              if corpusdefs.is_scoped(LEXER, source, d)]
+    assert not scoped, 'the corpus keeps these lines literal: %r' % scoped
+    # Floor: 11 at the 0.1.6 pin. A reader that finds none asserts nothing.
+    assert len(found) >= 11, 'only %d literal reference lines found' % len(found)
