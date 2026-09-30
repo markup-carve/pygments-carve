@@ -312,13 +312,6 @@ def _rule(name):
     return [i for i, pin in enumerate(PINS) if pin.name == name][0]
 
 
-#: The one block rule no corpus document distinguishes: an opener that names a
-#: raw format and never finds its closer. Every other rule changes the reading
-#: of at least one document, so for this one the pin above is the only defense.
-#: If the corpus grows a case, this test says so and the exception goes.
-CORPUS_BLIND = _rule('lone raw fence line')
-
-
 SOURCES = [p.read_text(encoding='utf-8') for p in DOCUMENTS]
 BASE_READINGS = [tuple(LEXER.get_tokens(s)) for s in SOURCES]
 
@@ -342,18 +335,20 @@ def _changed(lexer, limit=None):
 @corpus
 @pytest.mark.parametrize('index', range(len(PINS)), ids=[p.name for p in PINS])
 def test_the_corpus_notices_a_deleted_rule(index):
-    """An instrument that needs nobody to write a sample down."""
-    changed = _changed(MUTANTS[index], limit=None if index == CORPUS_BLIND else 1)
-    if index == CORPUS_BLIND:
-        assert not changed, (
-            'block rule %d used to be invisible to the corpus, and %d documents '
-            'now change when it is deleted. Drop it from CORPUS_BLIND.'
-            % (index, len(changed)))
-    else:
-        assert changed, (
-            'deleting block rule %d (%r) changes the lexer\'s reading of no '
-            'corpus document at all, so only its pin stands between that rule '
-            'and silent removal.' % (index, PINS[index].name))
+    """An instrument that needs nobody to write a sample down.
+
+    Every block rule is reached by at least one corpus document. The last
+    exception was `lone raw fence line` - an opener that names a raw format
+    and never finds its closer - and the bump to carve 9d6d06c brought
+    `509-a-fence-closer-below-a-nested-item-s-column-ends-containers-down-to-
+    its-owner-9`, whose closer sits at column 0 below the item that owns the
+    opener, so the exception is gone.
+    """
+    changed = _changed(MUTANTS[index], limit=1)
+    assert changed, (
+        'deleting block rule %d (%r) changes the lexer\'s reading of no '
+        'corpus document at all, so only its pin stands between that rule '
+        'and silent removal.' % (index, PINS[index].name))
 
 
 @corpus
@@ -361,12 +356,15 @@ def test_the_corpus_reads_the_two_rules_the_ticket_was_filed_on():
     """The two survivors, and the documents that can see them.
 
     The definition marker is read widely; the dash thematic break is read by
-    exactly two documents, which is why every ordinary sample of it was blunt.
+    exactly three documents, which is why every ordinary sample of it was
+    blunt.
     """
     assert sorted(_changed(MUTANTS[_rule('dash thematic break')])) == [
         '249-trailing-whitespace-after-a-block-marker',
         '326-a-column-0-line-after-a-container-s-last-block-when-that-block-'
         'left-no-paragraph-open-4',
+        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-'
+        'only-7',
     ]
     assert len(_changed(DEFLIST_MUTANTS[_deflist_rule('description')],
                         limit=51)) == 51
@@ -718,12 +716,13 @@ def test_removing_the_deflist_guard_takes_the_shape(guard):
 @pytest.mark.parametrize('index', range(len(DEFLIST_PINS)),
                          ids=[p.name for p in DEFLIST_PINS])
 def test_the_corpus_notices_a_deleted_deflist_rule(index):
-    """No corpus document has a blank line after two terms and then prose, so
-    the later-term rule is held by its pin alone."""
+    """Every deflist rule is reached by at least one corpus document.
+
+    The later-term rule was held by its pin alone until the bump to carve
+    9d6d06c: sections 503 and 504 rule on a term indented under a term, and
+    twelve of their documents change when the rule is deleted.
+    """
     changed = _changed(DEFLIST_MUTANTS[index], limit=1)
-    if index == _deflist_rule('a later term'):
-        assert not changed, 'the corpus now sees the later-term rule; drop this exception'
-    else:
-        assert changed, (
-            'deleting deflist rule %d (%r) changes no corpus document.'
-            % (index, DEFLIST_PINS[index].name))
+    assert changed, (
+        'deleting deflist rule %d (%r) changes no corpus document.'
+        % (index, DEFLIST_PINS[index].name))
