@@ -258,17 +258,19 @@ def test_the_corpus_has_fenced_bodies_to_measure():
 
 @corpus
 def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
-    """The zero above is only meaningful if this gate can reach sixty-nine.
+    """The zero above is only meaningful if this gate can reach a hundred and five.
 
-    Run over the same 1869 documents, the pre-#32 rule shape leaves live Carve
+    Run over the same 2200 documents, the pre-#32 rule shape leaves live Carve
     markup inside a fenced body in all but one document that holds one - the
     exception being a body whose only content is whitespace, which carries no
     scope either way. The count moves with the corpus, not with the rules: it
-    was fifty-eight over 1564 documents, and sixty-three over 1748.
+    was fifty-eight over 1564 documents, sixty-three over 1748, and sixty-nine
+    over 1869. The thirty-six added by the bump to carve 9d6d06c are all new
+    documents; no document already in the corpus changed its verdict.
     """
     hits = [p.name for p in DOCUMENTS
             if _non_verbatim(REGRESSION, p.read_text(encoding='utf-8'))]
-    assert len(hits) == 69, len(hits)
+    assert len(hits) == 105, len(hits)
 
 
 def test_the_reader_reports_live_markup_when_there_is_some():

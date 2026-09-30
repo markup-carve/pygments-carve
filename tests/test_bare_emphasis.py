@@ -221,7 +221,7 @@ def test_the_corpus_has_emphasis_runs_to_measure():
 def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
     """The zero above is only meaningful if this gate can reach seventeen.
 
-    Run over the same 1869 documents, the unguarded rules scope a run whose
+    Run over the same 2200 documents, the unguarded rules scope a run whose
     delimiters survive into the expected HTML in exactly these. The ticket
     measured SEVENTEEN; the extra one is `11-fenced-code-15`, where the run sat
     in a fenced body and markup-carve/pygments-carve#38 stopped lexing those as
@@ -234,7 +234,10 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
     document here. The `465-*` and two `467-*` entries arrived the same way,
     with markup-carve/carve#2043 and markup-carve/carve#2046, and the three
     `484-*` entries with markup-carve/carve#2160, whose subject is a delimiter
-    sitting immediately after `_` or `/`.
+    sitting immediately after `_` or `/`. The `519-*` entry and the two
+    `535-*` entries arrived with the bump to carve 9d6d06c, on the same
+    shape: a fence or an overindented marker inside a quoted item, which the
+    unguarded rules read as a bare run.
     """
     hits = sorted(p.stem for p in DOCUMENTS
                   if _case(p)[1] is not None
@@ -250,17 +253,29 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         '129-emphasis-opener-slash-adjacency-3',
         '131-emphasis-span-closes-before-a-following-delimiter',
         '20-smart-typography-arrows-and-symbols',
-        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters-10',
-        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters-5',
-        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters-7',
-        '276-a-fence-opened-on-a-list-marker-line-body-below-the-content-column-5',
-        '455-an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-2',
-        '465-an-underscore-pair-in-text-is-escaped-where-the-line-would-pair-it',
+        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters'
+        '-10',
+        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters'
+        '-5',
+        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters'
+        '-7',
+        '276-a-fence-opened-on-a-list-marker-line-body-below-the-content-colu'
+        'mn-5',
+        '455-an-unterminated-fence-on-a-nested-lead-in-a-description-body-own'
+        's-its-body-2',
+        '465-an-underscore-pair-in-text-is-escaped-where-the-line-would-pair-'
+        'it',
         '467-a-bare-closer-does-not-reach-inside-a-link-destination',
         '467-a-bare-closer-does-not-reach-inside-a-link-destination-2',
-        '484-a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs',
-        '484-a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs-2',
-        '484-a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs-6',
+        '484-a-delimiter-after-an-underscore-or-slash-opens-only-when-that-on'
+        'e-pairs',
+        '484-a-delimiter-after-an-underscore-or-slash-opens-only-when-that-on'
+        'e-pairs-2',
+        '484-a-delimiter-after-an-underscore-or-slash-opens-only-when-that-on'
+        'e-pairs-6',
+        '519-a-shifted-fence-in-a-quoted-item-stores-no-continuation-claim-2',
+        '535-a-marker-line-opaque-quote-keeps-overindented-markers-literal-11',
+        '535-a-marker-line-opaque-quote-keeps-overindented-markers-literal-12',
         '76-doubled-emphasis-delimiters',
         '79-two-char-delimiter-runs',
     ], hits
