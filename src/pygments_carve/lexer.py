@@ -1,6 +1,6 @@
 """Pygments lexer for the Carve markup language.
 
-Carve is a post-Markdown lightweight markup language. Its inline delimiters
+Carve is a lightweight markup language for documents. Its inline delimiters
 deliberately differ from Markdown's, which is why a Markdown lexer produces
 actively wrong output on a Carve document rather than merely plain text:
 

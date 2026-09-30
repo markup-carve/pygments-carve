@@ -22,7 +22,7 @@ pip install pygments-carve
 
 ## Why Carve needs its own lexer
 
-Carve is a post-Markdown markup language whose inline delimiters deliberately
+Carve is a lightweight markup language whose inline delimiters deliberately
 differ from Markdown's. A Markdown lexer does not merely under-highlight a Carve
 document, it highlights it *wrongly*:
 
