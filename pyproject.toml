@@ -26,7 +26,7 @@ Homepage = "https://markup-carve.github.io/carve/"
 Source = "https://github.com/markup-carve/pygments-carve"
 Issues = "https://github.com/markup-carve/pygments-carve/issues"
 
-# This entry point is what makes `pip install pygments-carve` enough: Pygments
+# This entry point is what makes installing the package enough: Pygments
 # discovers the lexer through it, so `carve` and `crv` become working fence
 # words in MkDocs, Sphinx, zensical and anything else built on Pygments.
 [project.entry-points."pygments.lexers"]

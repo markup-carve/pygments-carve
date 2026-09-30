@@ -8,10 +8,12 @@
 Installing it is enough. Pygments discovers the lexer through the
 `pygments.lexers` entry point, so `carve` and `crv` become working fence words
 everywhere Pygments is the highlighter - MkDocs, Sphinx, zensical, `pygmentize`,
-and anything built on them:
+and anything built on them.
+
+There is no release on PyPI yet, so install from the repository:
 
 ```sh
-pip install pygments-carve
+pip install git+https://github.com/markup-carve/pygments-carve
 ```
 
 ````markdown
