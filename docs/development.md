@@ -112,6 +112,16 @@ The suites, and the split matters:
 - **`test_registration.py`** resolves the lexer the way a consumer does, through
   the entry point, so a packaging mistake fails rather than passing on a direct
   import.
+- **`test_readme_install.py`** reads every `pip install` the documentation and
+  the package metadata tell a reader to run, and refuses any that names this
+  distribution on an index while `PUBLISHED_TO_PYPI` is False. The README
+  carried such a command for as long as PyPI had never served the name, and
+  nothing could see it: no suite read the documentation, and an
+  absent publish workflow cannot report its own absence
+  (markup-carve/pygments-carve#59). It keys off that constant rather than off
+  the network so it holds with no egress, and the release that first uploads a
+  distribution flips it. The scan is proved against the text that shipped the
+  defect, so its zero is a measurement.
 - **`test_submodules.py`** is the one file outside every `skipif`. The corpus
   and construct suites are parametrized over a directory, so an unchecked-out
   submodule collects zero cases and reports green; locally that is a skip, and
