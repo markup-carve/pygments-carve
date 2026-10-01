@@ -557,11 +557,11 @@ class CarveLexer(RegexLexer):
         ],
 
         'lineverbatim': [
-            (r'(!)(`+)(?!`)((?:(?!\2(?!`))[^\n])*)(\2(?!`)|$)',
+            (r'(!)(`+)(?!`)((?:(?!(?<!`)\2(?!`))[^\n])*)((?<!`)\2(?!`)|$)',
              bygroups(Operator, Punctuation, Literal, Punctuation)),
-            (r'(\$\$?)(`+)(?!`)((?:(?!\2(?!`))[^\n])*)(\2(?!`)|$)',
+            (r'(\$\$?)(`+)(?!`)((?:(?!(?<!`)\2(?!`))[^\n])*)((?<!`)\2(?!`)|$)',
              bygroups(Operator, Punctuation, String.Other, Punctuation)),
-            (r'(`+)(?!`)((?:(?!\1(?!`))[^\n])*)(\1(?!`)|$)',
+            (r'(`+)(?!`)((?:(?!(?<!`)\1(?!`))[^\n])*)((?<!`)\1(?!`)|$)',
              bygroups(Punctuation, String.Backtick, Punctuation)),
         ],
 

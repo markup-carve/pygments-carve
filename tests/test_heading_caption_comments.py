@@ -14,7 +14,7 @@ def token_at(source, needle):
 
 
 @pytest.mark.parametrize('prefix', ['# a ', '> # a ', '![alt](x.png)\n^ cap ', '> ![alt](x.png)\n> ^ cap '])
-@pytest.mark.parametrize('body', ['`x %% b` c', '``x %% b`` c', '!`x %% b` c', '$`x %% b` c', '`x %% b'])
+@pytest.mark.parametrize('body', ['`x %% b` c', '``x %% b`` c', '!`x %% b` c', '$`x %% b` c', '`x %% b', '` x `` y %% hidden', '``x```y %% hidden'])
 def test_verbatim_percent_is_not_a_comment(prefix, body):
     source = prefix + body + '\n\nplain tail'
     assert token_at(source, '%%') in Literal
