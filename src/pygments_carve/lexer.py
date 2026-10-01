@@ -495,6 +495,7 @@ class CarveLexer(RegexLexer):
 
         'heading': [
             (r'$', Text, '#pop'),
+            include('lineverbatim'),
             include('inlinecontent'),
             (_plain_run(), Generic.Heading),
             (r'[^\n]', Generic.Heading),
@@ -502,6 +503,7 @@ class CarveLexer(RegexLexer):
 
         'quoteline': [
             (r'$', Text, '#pop'),
+            include('lineverbatim'),
             include('inlinecontent'),
             (_plain_run(), Generic.Emph),
             (r'[^\n]', Generic.Emph),
@@ -509,6 +511,7 @@ class CarveLexer(RegexLexer):
 
         'caption': [
             (r'$', Text, '#pop'),
+            include('lineverbatim'),
             include('inlinecontent'),
             (_plain_run(), Generic.Subheading),
             (r'[^\n]', Generic.Subheading),
@@ -551,6 +554,15 @@ class CarveLexer(RegexLexer):
             include('inlinecontent'),
             (r'\n', Text),
             (r'.', Text),
+        ],
+
+        'lineverbatim': [
+            (r'(!)(`+)(?!`)((?:(?!\2(?!`))[^\n])*)(\2(?!`)|$)',
+             bygroups(Operator, Punctuation, Literal, Punctuation)),
+            (r'(\$\$?)(`+)(?!`)((?:(?!\2(?!`))[^\n])*)(\2(?!`)|$)',
+             bygroups(Operator, Punctuation, String.Other, Punctuation)),
+            (r'(`+)(?!`)((?:(?!\1(?!`))[^\n])*)(\1(?!`)|$)',
+             bygroups(Punctuation, String.Backtick, Punctuation)),
         ],
 
         'inlinecontent': [
