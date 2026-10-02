@@ -29,9 +29,13 @@ on:
     - cron: "20 5 * * *"
   workflow_dispatch:
 
+# Every job declares timeout-minutes. Without one GitHub applies a 360-minute
+# default, roughly 900x the median job in this org, so a hung step burns hours
+# of runner time before anything stops it.
 jobs:
   pins:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       # Report both, even when the first is stale: a job that stops at the
       # first lagging pin hides the other one.
