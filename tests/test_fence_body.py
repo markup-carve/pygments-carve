@@ -258,19 +258,27 @@ def test_the_corpus_has_fenced_bodies_to_measure():
 
 @corpus
 def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
-    """The zero above is only meaningful if this gate can reach a hundred and five.
+    """The zero above is only meaningful if this gate can reach a hundred and six.
 
-    Run over the same 2200 documents, the pre-#32 rule shape leaves live Carve
+    Run over the same 2223 documents, the pre-#32 rule shape leaves live Carve
     markup inside a fenced body in all but one document that holds one - the
     exception being a body whose only content is whitespace, which carries no
     scope either way. The count moves with the corpus, not with the rules: it
     was fifty-eight over 1564 documents, sixty-three over 1748, and sixty-nine
     over 1869. The thirty-six added by the bump to carve 9d6d06c are all new
     documents; no document already in the corpus changed its verdict.
+
+    The bump to carve bb09baea adds one, and it was measured the same way: the
+    hit list was taken at the pin this repository shipped (8b68a460, 2220
+    documents, 105 hits) and again at bb09baea (2223 documents, 106 hits), each
+    in its own process. The two lists differ by a single membership change,
+    547-an-info-string-does-not-change-how-a-flush-left-fence-folds-into-a-description-body-3.crv
+    joining. No document already in the corpus changed its verdict, and the two
+    sibling documents the same category adds hold no live markup to find.
     """
     hits = [p.name for p in DOCUMENTS
             if _non_verbatim(REGRESSION, p.read_text(encoding='utf-8'))]
-    assert len(hits) == 105, len(hits)
+    assert len(hits) == 106, len(hits)
 
 
 def test_the_reader_reports_live_markup_when_there_is_some():
