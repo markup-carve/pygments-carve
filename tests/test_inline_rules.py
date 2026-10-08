@@ -309,3 +309,53 @@ def test_the_criticmarkup_spelling_is_not_scoped():
     assert scoped_run(LEXER, 'a {>>note<<} b') == ()
     assert scoped_run(LEXER, 'a {# note #} b') == (
         (Punctuation, '{#'), (Comment, ' note '), (Punctuation, '#}'))
+
+
+# An include selector names an EXPLICIT id, and the whitespace run before a
+# part is optional. Every pin above spells one shape only - a bare path and a
+# spaced, letter-leading name - so the file was blind to both characters carve
+# 0.1.8 moved: `include_section` became `id_attribute`, whose
+# `explicit_identifier` admits a leading ASCII digit, and `include_options` no
+# longer demands a whitespace run before `@`.
+_SELECTOR_SPELLINGS = {
+    'a spaced digit-leading selector':
+        ('{{ ch.crv #2024-plan }}',
+         ((Punctuation, '{{'), (Name.Namespace, 'ch.crv'),
+          (Name.Label, '#2024-plan'), (Punctuation, '}}'))),
+    'a selector butting straight onto the path':
+        ('{{ ch.crv#2024-plan }}',
+         ((Punctuation, '{{'), (Name.Namespace, 'ch.crv'),
+          (Name.Label, '#2024-plan'), (Punctuation, '}}'))),
+    'a selector after a quoted path':
+        ('{{ "my ch.crv"#2024-plan }}',
+         ((Punctuation, '{{'), (Name.Namespace, '"my ch.crv"'),
+          (Name.Label, '#2024-plan'), (Punctuation, '}}'))),
+    'an option butting straight onto the path':
+        ('{{ ch.crv@shift:1 }}',
+         ((Punctuation, '{{'), (Name.Namespace, 'ch.crv'),
+          (Name.Variable, '@shift'), (Punctuation, ':'), (Literal, '1'),
+          (Punctuation, '}}'))),
+    'an option butting straight onto a selector':
+        ('{{ ch.crv #Name@shift:1 }}',
+         ((Punctuation, '{{'), (Name.Namespace, 'ch.crv'),
+          (Name.Label, '#Name'), (Name.Variable, '@shift'),
+          (Punctuation, ':'), (Literal, '1'), (Punctuation, '}}'))),
+    'a letter-leading selector still reads':
+        ('{{ ch.crv #intro }}',
+         ((Punctuation, '{{'), (Name.Namespace, 'ch.crv'),
+          (Name.Label, '#intro'), (Punctuation, '}}'))),
+}
+
+
+@pytest.mark.parametrize('name', sorted(_SELECTOR_SPELLINGS))
+def test_every_include_selector_spelling_is_scoped(name):
+    sample, expected = _SELECTOR_SPELLINGS[name]
+    assert scoped_run(LEXER, sample) == expected
+
+
+# The padding run is REQUIRED on each side, and widening the part separator
+# must not have widened that. Without this the option fix above could have been
+# spelled `[ \t]*` on the OUTER padding too and nothing would have objected.
+@pytest.mark.parametrize('sample', ['{{ch.crv}}', '{{ ch.crv}}', '{{ch.crv }}'])
+def test_a_directive_without_its_padding_run_stays_literal(sample):
+    assert scoped_run(LEXER, sample) == ()

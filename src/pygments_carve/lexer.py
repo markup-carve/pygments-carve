@@ -598,7 +598,12 @@ class CarveLexer(RegexLexer):
             # coloured as a hashtag inside a path. After the verbatim family, so
             # a directive in a code span stays literal; before every other brace
             # rule, none of which can spell `{{`.
-            (r'(\{\{)([ \t]+)((?:"(?:\\.|[^"\\])*"|[^#@}\s"][^#@}\s]*))((?:#[A-Za-z_][A-Za-z0-9_-]*)?(?:[ \t]+[^\s}]+)*)([ \t]+)(\}\})',
+            # The selector names an EXPLICIT id, so its first character may be
+            # an ASCII digit (`id_attribute` -> `explicit_identifier`), and the
+            # whitespace run before a part is OPTIONAL in every position: the
+            # path stops at `#` and `@` on its own, so `{{ c.crv#intro }}` and
+            # `{{ c.crv@shift:1 }}` are well formed.
+            (r'(\{\{)([ \t]+)((?:"(?:\\.|[^"\\])*"|[^#@}\s"][^#@}\s]*))((?:#[A-Za-z0-9_][A-Za-z0-9_-]*)?(?:[ \t]*[^\s}]+)*)([ \t]+)(\}\})',
              bygroups(Punctuation, Text, Name.Namespace, using(this, state='includeparts'), Text, Punctuation)),
 
             # CriticMarkup substitution and comment, before the forced family:
@@ -755,7 +760,7 @@ class CarveLexer(RegexLexer):
         # directive alone.
         'includeparts': [
             (r'[ \t]+', Text),
-            (r'#[A-Za-z_][A-Za-z0-9_-]*', Name.Label),
+            (r'#[A-Za-z0-9_][A-Za-z0-9_-]*', Name.Label),
             (r'(@[A-Za-z_][A-Za-z0-9_-]*)(:)([^\s}]+)',
              bygroups(Name.Variable, Punctuation, Literal)),
             (r'[^\s}]+', Text),
