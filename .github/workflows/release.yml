@@ -1,0 +1,476 @@
+name: Release
+
+on:
+  push:
+    tags:
+      # Both spellings. 0.1.0 is already tagged bare, and the sibling bindings
+      # tag with a leading v, so a shared habit must not decide whether the
+      # release path runs at all. The tag gate below strips the v before
+      # comparing, so either spelling has to agree with pyproject.toml.
+      - "[0-9]+.[0-9]+.[0-9]+*"
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+  # The release path is not exercised by an ordinary push, so a change to it
+  # used to be measured for the first time by the tag that spent it. These two
+  # triggers make it testable: a dispatch or a pull request runs every job
+  # except the upload, which is guarded on event and ref in `publish`.
+  workflow_dispatch:
+  pull_request:
+
+# Keyed on the ref, which for a tag push is the version. Two runs for one
+# version would race for the same PyPI filename, and the loser's failure would
+# read as a broken build rather than a duplicate. Not cancel-in-progress: a
+# half-cancelled publish is worse than a queued one.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+# Every job declares timeout-minutes. Without one GitHub applies a 360-minute
+# default, long enough for a stalled job to go unnoticed.
+#
+# EVERY GATE IS ITS OWN JOB, named in `publish`'s `needs:`. A gate written as a
+# step before the upload in the publishing job is one `continue-on-error`, one
+# reordering or one `if:` away from being advisory, and the upload would still
+# have the artifact in hand. That is the shape that shipped a vulnerable
+# carve-py in this org, and on PyPI it cannot be undone: a filename cannot be
+# re-uploaded once it exists, ever, and a yank is itself a public event.
+#
+# Unlike carve-py this workflow has no `changes` job skipping the work on an
+# untouched pull request. carve-py needs one because it builds seven wheels
+# across five runners; here the whole path is one pure-Python sdist and wheel,
+# so it runs unconditionally and no gate is ever a step with an `if:` that can
+# report green without having measured anything.
+jobs:
+  guard:
+    name: Check the tag and the changelog
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Seconds, and before the build, so a tag that disagrees with the
+      # packaged version fails while it can still be fixed. carve-py checks two
+      # manifests because its module reports CARGO_PKG_VERSION; here
+      # pyproject.toml is the only place a version lives, so it is the only
+      # place to check. Confirmed by grep: no __version__ anywhere in src/.
+      - name: The tag matches the packaged version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)"
+          if [ -z "$version" ]; then
+            echo "no version in pyproject.toml" >&2
+            exit 1
+          fi
+          if [ "$tag" != "$version" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match project version ${version}" >&2
+            exit 1
+          fi
+
+      # A dated section, not merely a heading. An undated one is the shape a
+      # cut leaves behind when the version was bumped and the section never
+      # written, and it reads as released while saying nothing.
+      - name: CHANGELOG.md has a dated section for this version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          count="$(grep -cE "^## \[?v?${version//./\\.}\]? - [0-9]{4}-[0-9]{2}-[0-9]{2}" CHANGELOG.md || true)"
+          if [ "$count" != "1" ]; then
+            echo "CHANGELOG.md needs exactly one dated section for ${version}, found ${count}" >&2
+            grep -nE '^## ' CHANGELOG.md >&2
+            exit 1
+          fi
+
+  build:
+    name: Build sdist and wheel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [guard]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install --upgrade build twine
+
+      - run: python -m build
+
+      # Metadata PyPI itself will parse. It refuses an upload over a README it
+      # cannot render, and finding that out at the upload is finding it out
+      # after the version number is spent.
+      - run: twine check --strict dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # THE ONLY JOB THAT ASKS WHETHER THE ARTIFACT IS CORRECT.
+  #
+  # Everything in `guard` is paperwork: a tag string, a changelog heading. None
+  # of it opens the thing being uploaded, so a wheel that installs to the wrong
+  # name, ships the test suite, or registers no lexer would pass every check
+  # and upload - the "check that cannot fail" class in markup-carve/carve#755,
+  # on the one path where it cannot be undone.
+  #
+  # It downloads what `build` produced rather than rebuilding, so what is
+  # measured is what `publish` uploads, and it installs into a clean virtualenv
+  # rather than importing the checkout, because `src/pygments_carve` and the
+  # installed copy are different files and only one of them ships.
+  package-gate:
+    name: Inspect and run the built artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # BOTH submodules. The corpus suite lexes every spec document and the
+          # construct sweep reads carve-grammars' inventory in place; without
+          # them each collects zero cases, which reads as a pass.
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Exactly one sdist and one wheel
+        run: |
+          set -euo pipefail
+          ls -l dist/
+          # Two of either and the gate does not know which artifact it is
+          # speaking about: it would install one and certify the other.
+          for pattern in '*.whl' '*.tar.gz'; do
+            count="$(ls dist/$pattern | wc -l | tr -d ' ')"
+            if [ "$count" != "1" ]; then
+              echo "expected exactly one dist/$pattern, found ${count}" >&2
+              exit 1
+            fi
+          done
+
+      - name: The wheel holds the package and nothing else
+        run: |
+          set -euo pipefail
+          python - <<'EOF'
+          import pathlib, sys, zipfile
+
+          wheel = next(pathlib.Path("dist").glob("*.whl"))
+          names = sorted(zipfile.ZipFile(wheel).namelist())
+          print("\n".join(names))
+
+          problems = []
+          # A wheel is what gets installed, so anything in it lands on the
+          # user's sys.path. A stray `tests/` there would shadow the test
+          # package of whatever else is installed beside it.
+          strays = [n for n in names
+                    if not n.startswith(("pygments_carve/", "pygments_carve-"))]
+          if strays:
+              problems.append(f"wheel holds paths outside the package: {strays}")
+          if any(n.split("/")[0] in {"tests", "docs", "spec", "carve-grammars"} for n in names):
+              problems.append("wheel ships tests, docs or a submodule")
+          if "pygments_carve/lexer.py" not in names:
+              problems.append("wheel has no pygments_carve/lexer.py")
+          if not any(n.endswith(".dist-info/entry_points.txt") for n in names):
+              problems.append("wheel declares no entry points, so Pygments would not find the lexer")
+          if problems:
+              sys.exit("::error::" + "; ".join(problems))
+          print("wheel contents ok")
+          EOF
+
+      # The sdist is checked for what it MUST carry, not for tests being
+      # absent: it deliberately ships `tests/` so a from-source install can be
+      # verified, and nothing in an sdist reaches sys.path without a build.
+      - name: The sdist can be built from
+        run: |
+          set -euo pipefail
+          sdist="$(ls dist/*.tar.gz)"
+          # Listed ONCE into a variable rather than piped into each grep.
+          # Under `pipefail` a `grep -q` exits on its first match, tar dies of
+          # SIGPIPE, and the pipeline reports tar's 141 - so every file looked
+          # missing and the gate failed over an sdist that was correct.
+          # A herestring, not a pipe, for the same reason.
+          listing="$(tar tzf "$sdist" | sort)"
+          printf '%s\n' "$listing"
+          for required in pyproject.toml LICENSE README.md src/pygments_carve/lexer.py; do
+            if ! grep -qx "pygments_carve-[^/]*/${required}" <<<"$listing"; then
+              echo "sdist is missing ${required}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Install the wheel into a clean virtualenv and run the suite
+        run: |
+          set -euo pipefail
+          python -m venv .gate
+          gate=.gate/bin/python
+          "$gate" -m pip install --quiet --upgrade pip
+          # Dependencies from the index, then the wheel with --no-index and
+          # --no-deps, so the only thing that can satisfy `pygments_carve` is
+          # the artifact in dist/ and the import cannot resolve to the checkout
+          # or to anything the runner image already had.
+          "$gate" -m pip install --quiet 'Pygments>=2.12' pytest
+          "$gate" -m pip install --quiet --no-index --no-deps \
+            --find-links dist --force-reinstall pygments_carve
+
+          "$gate" - <<'EOF'
+          import pygments.lexers, pygments_carve, sys
+
+          # An import that does not resolve into site-packages is a source-tree
+          # or editable import, and would certify a file that does not ship.
+          where = pygments_carve.__file__
+          print("resolved:", where)
+          if "site-packages" not in where:
+              sys.exit(f"::error::import resolved outside site-packages: {where}")
+
+          # The entry point is the whole product: without it `carve` is not a
+          # fence word anywhere, and the package does nothing on install.
+          lexer = pygments.lexers.get_lexer_by_name("carve")
+          print("lexer:", type(lexer).__name__, lexer.aliases)
+          if type(lexer).__name__ != "CarveLexer":
+              sys.exit(f"::error::`carve` resolves to {type(lexer).__name__}")
+          for alias in ("carve", "crv"):
+              pygments.lexers.get_lexer_by_name(alias)
+          EOF
+
+          # The suite from the checkout, against the INSTALLED artifact. The
+          # tests need the two submodules, which the sdist does not carry, so
+          # the cases come from here and the code under test comes from the
+          # wheel. pyproject puts only `tests` on pythonpath, never `src`.
+          "$gate" -m pytest -q tests
+
+  # A release must describe the tagged changelog section before anything is
+  # uploaded. Tag-only: on a dispatch or a pull request there is no tag, so
+  # there is no release to hold anything to, and `publish` is unreachable on
+  # those events anyway.
+  notes-gate:
+    name: The release notes match this tag's changelog
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [guard]
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      # `write`, not `read`, and that is the whole reason this is spelled out: a
+      # DRAFT release is invisible to a caller without push access, so under
+      # `contents: read` the listing comes back empty and the gate reports "no
+      # release" for a draft sitting right there with notes in it.
+      # See markup-carve/carve-wasm#80.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run the release-notes gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/run-release-notes-gate.sh "$GITHUB_REF_NAME"
+
+  # PROVE THE CREDENTIAL BEFORE THE IRREVERSIBLE ACT, NOT DURING IT.
+  #
+  # Without this, a release reaches the upload with every content gate green
+  # and fails on authentication - after the tag is pushed, after the GitHub
+  # release exists, with the version number spent and the only remedy a second
+  # tag. The npm siblings in this org grew the same preflight for the same
+  # reason.
+  #
+  # It carries `environment: pypi` deliberately. A PyPI trusted publisher can
+  # be scoped to an environment, and the OIDC claims a job presents include its
+  # environment - so minting from a job WITHOUT the environment would be
+  # refused by a correctly configured publisher and the preflight would fail on
+  # its own shape. Declaring it here makes the claims the preflight presents
+  # the same ones `publish` will present.
+  credentials:
+    name: PyPI credential preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [guard]
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pygments-carve
+    steps:
+      # The secrets context is not readable from a step-level `if`, so the path
+      # is decided in a step instead. This step reports only whether the secret
+      # is set and well formed; the token reaches no other step, and in
+      # particular no third-party action.
+      - name: Decide the publish path
+        id: auth
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -n "$PYPI_API_TOKEN" ]; then
+            case "$PYPI_API_TOKEN" in
+              pypi-*) ;;
+              *) echo "::error::PYPI_API_TOKEN is set but is not a PyPI API token (tokens start with pypi-)"; exit 1 ;;
+            esac
+            echo "mode=token" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=oidc" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The real proof, and the reason Trusted Publishing is preferred: the
+      # exchange either returns a short-lived upload token or tells us why not,
+      # so "can this workflow publish" is answered here rather than at the
+      # upload. The minted token is discarded; it is scoped to this project and
+      # expires in minutes.
+      #
+      # PyPI refuses the exchange when no trusted publisher (or, for a project
+      # that does not exist yet, no PENDING publisher) is configured for this
+      # repository and workflow. That refusal is the loud early failure.
+      - name: Mint a PyPI token from the OIDC assertion
+        if: steps.auth.outputs.mode == 'oidc'
+        run: |
+          set -euo pipefail
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::error::No OIDC token available and no PYPI_API_TOKEN secret. Configure a PyPI trusted publisher for this repository and workflow, or set the secret."
+            exit 1
+          fi
+          assertion="$(curl -fsS \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=pypi" | jq -r '.value')"
+          if [ -z "$assertion" ] || [ "$assertion" = "null" ]; then
+            echo "::error::Could not obtain an OIDC assertion for audience pypi"
+            exit 1
+          fi
+          # --fail-with-body so PyPI's own explanation of the refusal reaches
+          # the log instead of a bare exit code.
+          response="$(curl -sS --fail-with-body \
+            -X POST https://pypi.org/_/oidc/mint-token \
+            -H 'Content-Type: application/json' \
+            -d "{\"token\":\"${assertion}\"}")" || {
+              echo "::error::PyPI refused the OIDC assertion. Configure a trusted publisher (a PENDING publisher, since pygments-carve does not exist on PyPI yet) for markup-carve/pygments-carve, workflow release.yml, environment pypi."
+              printf '%s\n' "$response" >&2
+              exit 1
+            }
+          if ! printf '%s' "$response" | jq -e '.token | strings and (. != "")' >/dev/null; then
+            echo "::error::PyPI returned no token for the OIDC assertion"
+            printf '%s\n' "$response" | jq -r '.message? // .' >&2
+            exit 1
+          fi
+          echo "PyPI accepted the OIDC assertion: this workflow can publish."
+
+      # A token is a bearer secret, so there is no harmless probe that proves it
+      # can publish - PyPI has no whoami, and the only endpoint that would
+      # answer is the upload itself. This step therefore claims only what it
+      # measures: the secret is present and shaped like a PyPI token.
+      #
+      # The token path is the bootstrap path. Once pygments-carve exists on
+      # PyPI, configure a trusted publisher there and delete the secret; the
+      # mint step above then takes over, nothing is stored, and the preflight
+      # becomes a real end-to-end proof.
+      - name: Report the token path
+        if: steps.auth.outputs.mode == 'token'
+        run: |
+          echo "::warning::Publishing with a stored API token. The preflight can only confirm the secret is set and well formed, not that PyPI accepts it. Switch to Trusted Publishing after the first release."
+
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Each gate is named here, which is what makes the upload unreachable over
+    # a wrong artifact, an undescribed release or a credential that cannot
+    # publish. Ordering any of them inside this job would not: the upload would
+    # still have the artifact in hand.
+    needs: [guard, build, package-gate, notes-gate, credentials]
+    # A pull request and a dispatch run everything above and stop here. The
+    # event matters as much as the ref: a dispatch can be aimed AT A TAG, in
+    # which case github.ref is a tag ref too, and a run meant to test the path
+    # would upload.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    permissions:
+      # See notes-gate: `write` because the last step publishes the draft, and
+      # because a draft is invisible under read access.
+      contents: write
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pygments-carve
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Re-run rather than trusted from the gate job: the notes can be edited
+      # between the gate and the approval, and the approval is a human pause of
+      # unbounded length.
+      - name: The release notes still match this tag's changelog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/run-release-notes-gate.sh "$GITHUB_REF_NAME"
+
+      - name: Decide the publish path
+        id: auth
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -n "$PYPI_API_TOKEN" ]; then
+            echo "mode=token" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=oidc" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The artifacts package-gate measured, not a rebuild. A rebuild here
+      # would upload something no gate has opened.
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI (API token)
+        if: steps.auth.outputs.mode == 'token'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Publish to PyPI (Trusted Publishing)
+        if: steps.auth.outputs.mode == 'oidc'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+      # A registry publish is not finished until the release page exists. The
+      # tag is pushed, CI publishes, PyPI answers 200, and "released" feels
+      # done - while /releases still shows a draft, so a reader has no notes
+      # and no changelog for the version they just installed.
+      #
+      # Last, deliberately: a draft that stays a draft is recoverable, and one
+      # published beside a failed upload is not. It no-ops when the release is
+      # already published, which is the state 0.1.0 is in.
+      - name: Publish the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash tools/run-release-notes-gate.sh "$GITHUB_REF_NAME" "$RUNNER_TEMP/release.json"
+          id="$(jq -r 'select(.draft) | .id // empty' "$RUNNER_TEMP/release.json")"
+          if [ -z "$id" ]; then
+            echo "The release is already published."
+            exit 0
+          fi
+          # `tag_name` goes with every PATCH of a release. Omit it on a DRAFT
+          # and GitHub replaces the tag with a generated `untagged-*`
+          # placeholder, because a draft's tag is a string on the object rather
+          # than a git ref, so the field has nothing to fall back to.
+          # `-F` (not `-f`) for draft, so it is sent as a boolean.
+          gh api "repos/$GITHUB_REPOSITORY/releases/$id" -X PATCH \
+            -f tag_name="$GITHUB_REF_NAME" -F draft=false --jq '"published \(.tag_name)"'
+          # Read it back: exit status does not tell you whether the tag survived.
+          gh api "repos/$GITHUB_REPOSITORY/releases/$id" \
+            --jq '"draft=\(.draft) tag=\(.tag_name)"'
