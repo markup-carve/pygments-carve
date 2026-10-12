@@ -11,6 +11,12 @@ IT IS ONE-SIDED, deliberately, and in the safe direction. A run whose CONTENT
 holds markup does not survive into the HTML verbatim even when the delimiters
 stayed literal, so this reader says nothing about it. Under-reporting costs a
 measurement; a false report would cost a wrong failure.
+
+The HTML is read per document, so the same text written a second time with its
+delimiters backslash-escaped puts them in the HTML without saying anything
+about the run. Each escaped copy accounts for one occurrence, and a run is
+reported only when the HTML holds more than those. An unescaped copy accounts
+for nothing: it is as likely to be the thing the lexer should have read.
 """
 
 import html as htmlmod
@@ -52,12 +58,30 @@ def runs(lexer, source):
     return found
 
 
-def _survives(text, html):
+def _count(text, html):
     escaped = (text.replace('&', '&amp;').replace('<', '&lt;')
                    .replace('>', '&gt;').replace('"', '&quot;'))
-    return text in html or escaped in html or text in htmlmod.unescape(html)
+    return max(html.count(text), html.count(escaped),
+               htmlmod.unescape(html).count(text))
+
+
+def _escaped_copies(text, source, found):
+    """How often ``text`` is spelled with backslash escapes outside every run."""
+    out, at = [], 0
+    for offset, run in found:
+        if offset < at:
+            continue
+        out.append(source[at:offset])
+        at = offset + len(run)
+    out.append(source[at:])
+    # NUL keeps the text on either side of a removed run from joining up.
+    rest = '\0'.join(out)
+    resolved = re.sub(r'\\([!-/:-@\[-`{-~])', r'\1', rest)
+    return resolved.count(text) - rest.count(text)
 
 
 def unopened(lexer, source, html):
     """Runs the lexer scopes whose delimiters survive into the expected HTML."""
-    return [text for _, text in runs(lexer, source) if _survives(text, html)]
+    found = runs(lexer, source)
+    return [text for _, text in found
+            if _count(text, html) > _escaped_copies(text, source, found)]

@@ -258,7 +258,7 @@ def test_the_corpus_has_fenced_bodies_to_measure():
 
 @corpus
 def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
-    """The zero above is only meaningful if this gate can reach a hundred and six.
+    """The zero above is only meaningful if this gate can reach a hundred and eight.
 
     Run over the same 2223 documents, the pre-#32 rule shape leaves live Carve
     markup inside a fenced body in all but one document that holds one - the
@@ -275,10 +275,16 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     547-an-info-string-does-not-change-how-a-flush-left-fence-folds-into-a-description-body-3.crv
     joining. No document already in the corpus changed its verdict, and the two
     sibling documents the same category adds hold no live markup to find.
+
+    The bump to carve 2d473af7 adds two, measured the same way: 106 hits over
+    the 2225 documents at bae59dad, 108 over the 2322 at 2d473af7. Both are new
+    documents from markup-carve/carve#2890, the `-4` and `-13` cases of
+    553-a-below-column-line-continues-a-paragraph-only-where-one-is-open, and
+    no document already in the corpus changed its verdict.
     """
     hits = [p.name for p in DOCUMENTS
             if _non_verbatim(REGRESSION, p.read_text(encoding='utf-8'))]
-    assert len(hits) == 106, len(hits)
+    assert len(hits) == 108, len(hits)
 
 
 def test_the_reader_reports_live_markup_when_there_is_some():

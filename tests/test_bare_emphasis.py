@@ -217,6 +217,22 @@ def test_the_corpus_has_emphasis_runs_to_measure():
     assert total > 40, 'only %d bare emphasis runs across the corpus' % total
 
 
+def test_an_escaped_copy_of_a_run_is_not_the_run_surviving():
+    """The HTML is read per document, and an escaped copy is in it too.
+
+    Corpus `471-braced-emphasis-can-nest-its-own-kind-11` writes one span and,
+    in the next paragraph, the same text with every delimiter escaped. The
+    second paragraph is what puts `*x*` in the HTML; the span was opened.
+    """
+    source = '\\{*x*}\n\n\\{\\*x\\*\\}\n'
+    html = '<p>{<strong>x</strong>}</p>\n<p>{*x*}</p>\n'
+    assert emphasisruns.runs(LEXER, source) == [(2, '*x*')]
+    assert emphasisruns.unopened(LEXER, source, html) == []
+    # One escaped copy accounts for one occurrence and no more.
+    assert emphasisruns.unopened(
+        UNGUARDED, '\\*x\\* and a*x*\n', '<p>*x* and a*x*</p>\n') == ['*x*']
+
+
 @corpus
 def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
     """The zero above is only meaningful if this gate can reach seventeen.

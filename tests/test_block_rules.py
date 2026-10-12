@@ -356,8 +356,9 @@ def test_the_corpus_reads_the_two_rules_the_ticket_was_filed_on():
     """The two survivors, and the documents that can see them.
 
     The definition marker is read widely; the dash thematic break is read by
-    exactly three documents, which is why every ordinary sample of it was
-    blunt.
+    exactly four documents, which is why every ordinary sample of it was
+    blunt. The `553-*` entry arrived with markup-carve/carve#2890: a break two
+    list levels deep, followed by a column-0 line.
     """
     assert sorted(_changed(MUTANTS[_rule('dash thematic break')])) == [
         '249-trailing-whitespace-after-a-block-marker',
@@ -365,6 +366,8 @@ def test_the_corpus_reads_the_two_rules_the_ticket_was_filed_on():
         'left-no-paragraph-open-4',
         '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-'
         'only-7',
+        '553-a-below-column-line-continues-a-paragraph-only-where-one-is-open-'
+        '3',
     ]
     assert len(_changed(DEFLIST_MUTANTS[_deflist_rule('description')],
                         limit=51)) == 51
