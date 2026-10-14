@@ -850,13 +850,12 @@ def _decisions(lexer, text):
     return memo[1]
 
 
-def _plus_attaches(text, start, decided):
+def _plus_attaches(text, start, decided, blank=False):
     """Does a lone `+` at `start` attach to an open list item, quote or description?
 
     A list item stays open across blank lines; a quote or a description does
     not, and any other block at the left margin closes all three.
     """
-    blank = False
     end = start
     while True:
         line = _line_above(text, end)
@@ -866,8 +865,8 @@ def _plus_attaches(text, start, decided):
         if not line.strip():
             blank = True
         elif line.strip() == '+':
-            if not blank and end in decided:
-                return decided[end]
+            if end in decided:
+                return decided[end][blank]
         elif _LIST_LINE.match(line):
             return True
         elif _HOLDER_LINE.match(line):
@@ -880,7 +879,9 @@ def _continuation_marker(lexer, match):
     margin, plus, rest = match.group(1, 2, 3)
     decided = _decisions(lexer, match.string)
     attaches = _plus_attaches(match.string, match.start(), decided)
-    decided[match.start()] = attaches
+    # Also the reading a later `+` with a blank line between would reach here.
+    decided[match.start()] = (
+        attaches, _plus_attaches(match.string, match.start(), decided, blank=True))
     yield match.start(1), Text, margin
     yield match.start(2), Punctuation if attaches else Text, plus
     yield match.start(3), Text, rest
