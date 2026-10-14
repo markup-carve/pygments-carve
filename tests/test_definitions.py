@@ -201,3 +201,19 @@ def test_an_abbreviation_term_is_one_ascii_alphanumeric_word(line):
 def test_a_definition_behind_a_non_marker_is_prose(line):
     """`Ab.` and `Vim.` are not ordered markers, so the line is a paragraph."""
     assert (Punctuation, ']:') not in run(line)
+
+
+@pytest.mark.parametrize('source', [
+    ':: term\n+\n: d\n',
+    ':: A term that\n   wraps\n+\n: d\n',
+    ':: t\n+ a |\n: d\n',
+])
+def test_a_plus_line_under_a_term_is_the_term_s_text(source):
+    """corpus 593: `:: t`, `+` renders the term `t +`, not a continuation."""
+    tokens = run(source)
+    assert (Punctuation, '+') not in tokens
+    assert (Punctuation, ':') in tokens
+
+
+def test_a_lone_plus_under_a_description_is_still_a_continuation_marker():
+    assert (Punctuation, '+') in run(':: t\n: d\n+\nx\n')

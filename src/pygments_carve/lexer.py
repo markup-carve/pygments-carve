@@ -1094,7 +1094,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # the `deflist` state it opens, so a `:` line with no term above it
             # stays a paragraph.
             (r'^(' + _MARGIN + r')(::)( +[ \t]*)(?=[^ \t\n])',
-             bygroups(Text, Punctuation, Text), ('deflist', 'heading')),
+             bygroups(Text, Punctuation, Text), ('deflist', 'termtail', 'heading')),
 
             # Blockquote marker. A marker must be followed by a space or end the
             # line; `>foo` is a paragraph. A block after the marker is lexed as
@@ -1163,7 +1163,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'^(?=' + _MARGIN + _OTHER_OPENER + r')', Text, '#pop'),
             (r'^[ \t]*\n(?![ \t]*(?:\n|::? ))', Text, '#pop'),
             (r'^(' + _MARGIN + r')(::)( +[ \t]*)(?=[^ \t\n])',
-             bygroups(Text, Punctuation, Text), 'heading'),
+             bygroups(Text, Punctuation, Text), ('termtail', 'heading')),
             (_DESCRIPTION_FENCE,
              _fenced(8, Text, Text, Punctuation, Text, Punctuation, None, Text,
                      using(this, state='fencelang'), using(this, state='infostring'),
@@ -1171,6 +1171,16 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'^(' + _MARGIN + r')(:)(?= +[ \t]*[^ \t\n])' + _NESTED_TAIL,
              bygroups(Text, Punctuation, Text, using(this, state='root'))),
             include('block'),
+        ],
+
+        # The lines a term continues onto. A lone `+` or a `+ a |` line here is
+        # the term's text, not a continuation marker or row: the engine renders
+        # `:: t`, `+` as the term `t +`.
+        'termtail': [
+            (r'^(?=[ \t]*(?:\n|\Z)|' + _MARGIN + r'(?:::? |' + _OTHER_OPENER + r'|' + _INTERRUPTER + r'))',
+             Text, '#pop'),
+            (r'\n', Text),
+            include('inline'),
         ],
 
         # A fence body, reached only through the whole-fence rules above, which
