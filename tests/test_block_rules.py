@@ -604,8 +604,8 @@ def test_the_blank_line_guard_is_what_keeps_the_fence_search_cheap():
     The guarded lexer is measured on 2000 and 4000 lines, best of five: at 12
     and 20 lines it took microseconds, which is timer noise, and the pin failed
     on a loaded machine with nothing wrong. Doubling must stay under x3, the
-    linear threshold the fence closer search uses; an exponential search does
-    not finish 2000 lines at all. The unguarded lexer is measured where it can
+    linear threshold the fence closer search uses, on one of three attempts; an
+    exponential search does not finish 2000 lines at all. The unguarded lexer is measured where it can
     still finish: eight more blank lines cost it 180x.
     """
     unguarded = build_lexer(without_clause(SOURCE, 1, r'(?!\2)', 0, BLOCK))
@@ -617,7 +617,12 @@ def test_the_blank_line_guard_is_what_keeps_the_fence_search_cheap():
         return (_elapsed(lexer, blanks(large), repeats)
                 / max(_elapsed(lexer, blanks(small), repeats), 1e-9))
 
-    guarded_ratio = ratio(LEXER, 2000, 4000, 5)
+    # Measured again before it fails, as tests/test_inline_timing.py does: a
+    # linear search is under x3 on most runs, an exponential one on none.
+    for _ in range(3):
+        guarded_ratio = ratio(LEXER, 2000, 4000, 5)
+        if guarded_ratio < 3:
+            break
     assert guarded_ratio < 3, (
         'doubling the whitespace-only lines under an unclosed comment fence '
         'multiplied the time by %.2f, which is the growth the guard exists to '
