@@ -40,9 +40,10 @@ answer here as it does there.
 Spec: https://markup-carve.github.io/carve/
 """
 
+import bisect
 import re
 
-from pygments.lexer import RegexLexer, bygroups, include, using, this
+from pygments.lexer import RegexLexer, RegexLexerMeta, bygroups, include, using, this
 from pygments.token import (
     Comment,
     Generic,
@@ -64,14 +65,16 @@ __all__ = ['CarveLexer']
 _MARGIN = r'(?:\A\ufeff)?[ \t]*'
 
 #: One attribute block, brace to brace. Quoted values may contain a brace and
-#: an escaped quote, so the value alternatives come before the bare-character
-#: one; a single nested brace pair is allowed for a braced span written inside.
+#: an escaped quote; a single nested brace pair is allowed for a braced span
+#: written inside. A quote is never a bare character: the engine renders
+#: `[x]{key=a"b}` as text, and a `"` both alternatives could take made an
+#: unclosed run of quotes exponential (30 quotes, 2s, x2.6 per two more).
 _ATTRS = (
     r'\{(?=[.:}\'"]|\#[\w-]+[\s}]|[A-Za-z][\w-]*(?:[=\s}]|$))(?:'
     r'"(?:[^"\\\n]|\\.)*"'
     r"|'(?:[^'\\\n]|\\.)*'"
     r'|\{[^{}\n]*\}'
-    r'|(?!(?<=[{\s])[.#](?!\w[\w-]*[\s}]))[^{}\n]'
+    r'|(?!(?<=[{\s])[.#](?!\w[\w-]*[\s}]))[^{}\n"\']'
     r')*\}'
 )
 
@@ -88,7 +91,7 @@ _ATTRS_UNCHECKED = _ATTRS.replace(r'(?!(?<=[{\s])[.#](?!\w[\w-]*[\s}]))', '')
 #:
 #: The inline form deliberately cannot, because an unclosed inline `{` would
 #: otherwise swallow the rest of the document.
-_ATTRS_LINE = _ATTRS.replace(r'[^{}\n]', r'[^{}]').replace(r'\{[^{}]*\}', r'\{[^{}]*\}')
+_ATTRS_LINE = _ATTRS.replace(r'[^{}\n', r'[^{}')
 
 
 def _label(depth=3):
@@ -171,8 +174,154 @@ def _plain_run(extra=''):
     return r'[^\n' + _INLINE_STARTERS + extra + r']+'
 
 
+#: Per-document indexes for `_Scan`, most recently used first. A `using()`
+#: call lexes a substring, which is a different text, so several are live at
+#: once; the bound only has to outlast that nesting.
+_INDEXES = []
+_INDEX_SLOTS = 16
 
-class CarveLexer(RegexLexer):
+
+def _indexes(text):
+    for i, (held, found) in enumerate(_INDEXES):
+        if held is text:
+            if i:
+                _INDEXES.insert(0, _INDEXES.pop(i))
+            return found
+    found = {}
+    _INDEXES.insert(0, (text, found))
+    del _INDEXES[_INDEX_SLOTS:]
+    return found
+
+
+def _line_end(text, at):
+    """The offset of the first newline at or after ``at``, or ``len(text)``."""
+    found = _indexes(text)
+    breaks = found.get('\n')
+    if breaks is None:
+        breaks = found['\n'] = [m.start() for m in re.finditer('\n', text)]
+    i = bisect.bisect_left(breaks, at)
+    return breaks[i] if i < len(breaks) else len(text)
+
+
+def _closers(text, rex):
+    """``(starts, ends)`` of every match of ``rex`` in ``text``, overlaps included."""
+    found = _indexes(text)
+    hit = found.get(rex)
+    if hit is None:
+        starts, ends = [], []
+        for m in rex.finditer(text):
+            starts.append(m.start())
+            ends.append(m.end(1))
+        hit = found[rex] = (starts, ends)
+    return hit
+
+
+class _Scan:
+    """A rule whose closer is looked up in an index instead of scanned for.
+
+    WHY. A rule spelled ``opener [^\\n]*? closer`` scans to the end of the line
+    from every opener that has no closer, so a line of such openers is
+    quadratic: 8000 characters of ``*a `` took 0.4s and doubling it four times
+    that, and the CriticMarkup substitution, which scans twice, was cubic. The
+    closers do not depend on which opener is asking, so they are found once per
+    document and every opener does a binary search.
+
+    ``rest`` completes ``opener`` into the rule's full pattern, which is matched
+    with the found closer's end as ``endpos``, so the groups and the guards are
+    the pattern's own. ``close`` names the closer: a pattern, or a tuple of
+    patterns found one after the other. A closer starting fewer than ``least``
+    characters past the opener is skipped, or with ``stop`` ends the search,
+    which is how ``[^]\\n]+]`` reads: the FIRST `]` closes it or nothing does.
+    Every closer must start on the opener's line.
+    """
+
+    def __init__(self, opener, rest, close, least=0, stop=False):
+        self.opener = opener
+        self.pattern = opener + rest
+        self.close = close if isinstance(close, tuple) else (close,)
+        self.least = least
+        self.stop = stop
+
+    def compile(self, flags):
+        return _ScanMatcher(self, flags).match
+
+
+class _ScanMatcher:
+    """A compiled `_Scan`. Pygments calls ``match(text, pos)`` like a regex's."""
+
+    def __init__(self, scan, flags):
+        self.pattern = scan.pattern
+        self.least = scan.least
+        self.stop = scan.stop
+        self.opener = re.compile(scan.opener, flags)
+        self.full = re.compile(scan.pattern, flags)
+        self.close = tuple(re.compile(r'(?=(' + c + r'))', flags) for c in scan.close)
+
+    def end(self, text, opened):
+        at = opened.end()
+        limit = _line_end(text, at)
+        for n, rex in enumerate(self.close):
+            starts, ends = _closers(text, rex)
+            floor = at + self.least if n == 0 else at
+            i = bisect.bisect_left(starts, at if self.stop and n == 0 else floor)
+            if i == len(starts) or starts[i] >= limit or starts[i] < floor:
+                return None
+            at = ends[i]
+        return at
+
+    def match(self, text, pos=0):
+        opened = self.opener.match(text, pos)
+        if opened is None:
+            return None
+        end = self.end(text, opened)
+        if end is None:
+            return None
+        return self.full.fullmatch(text, pos, end)
+
+
+class _CodeScan(_ScanMatcher):
+    """A code span: its closer is the next backtick run of exactly its width.
+
+    The runs are indexed by width once per document. The opener is a whole run
+    too, so a run that finds no closer is never retried from inside itself.
+    """
+
+    def end(self, text, opened):
+        group = opened.re.groups
+        at = opened.end()
+        found = _indexes(text)
+        runs = found.get('`')
+        if runs is None:
+            runs = found['`'] = {}
+            for m in re.finditer('`+', text):
+                runs.setdefault(m.end() - m.start(), []).append(m.start())
+        width = len(opened.group(group))
+        starts = runs.get(width, ())
+        i = bisect.bisect_left(starts, at)
+        if i < len(starts) and starts[i] < _line_end(text, at):
+            return starts[i] + width
+        return None
+
+
+class _Code(_Scan):
+    def __init__(self, opener, rest):
+        super().__init__(opener, rest, ())
+
+    def compile(self, flags):
+        return _CodeScan(self, flags).match
+
+
+class _ScanMeta(RegexLexerMeta):
+    """Compiles a `_Scan` rule to its matcher and every other rule as Pygments does."""
+
+    def _process_regex(cls, regex, rflags, state):
+        if isinstance(regex, _Scan):
+            return regex.compile(rflags)
+        return super()._process_regex(regex, rflags, state)
+
+
+
+class CarveLexer(RegexLexer, metaclass=_ScanMeta):
     """Lexer for the Carve markup language."""
 
     name = 'Carve'
@@ -575,17 +724,18 @@ class CarveLexer(RegexLexer):
             # A trailing comment runs to end of line from anywhere on it.
             (r'(%%)([^\n]*)$', bygroups(Comment.Preproc, Comment)),
 
-            # Verbatim families first: nothing inside them is markup. The
-            # literal form is a `!` PREFIX on a code span, not a trailing
+            # Verbatim families first: nothing inside them is markup. A span
+            # opens on a whole backtick run and closes on the next run of
+            # exactly its width, so `x `a``b` y` holds `a``b`. The literal form is a `!` PREFIX on a code span, not a trailing
             # attribute, and it has to be tried before plain inline code or the
             # `!` would be read as text and the span as ordinary code.
-            (r'(!)(`+)([^\n]*?)(\2)',
+            (_Code(r'(!)(`+)(?!`)', r'([^\n]*?)(\2)'),
              bygroups(Operator, Punctuation, Literal, Punctuation)),
-            (r'(\$\$)(`+)([^\n]*?)(\2)',
+            (_Code(r'(\$\$)(`+)(?!`)', r'([^\n]*?)(\2)'),
              bygroups(Operator, Punctuation, String.Other, Punctuation)),
-            (r'(\$)(`+)([^\n]*?)(\2)',
+            (_Code(r'(\$)(`+)(?!`)', r'([^\n]*?)(\2)'),
              bygroups(Operator, Punctuation, String.Other, Punctuation)),
-            (r'(`+)([^\n]*?)(\1)', bygroups(Punctuation, String.Backtick, Punctuation)),
+            (_Code(r'(?<!`)(`+)(?!`)', r'([^\n]*?)(\1)'), bygroups(Punctuation, String.Backtick, Punctuation)),
 
             # The reserved include directive `{{ path #section @key:value }}`
             # (PART 9 section 19, grammar.ebnf `include_directive`). The core
@@ -603,50 +753,58 @@ class CarveLexer(RegexLexer):
             # whitespace run before a part is OPTIONAL in every position: the
             # path stops at `#` and `@` on its own, so `{{ c.crv#intro }}` and
             # `{{ c.crv@shift:1 }}` are well formed.
-            (r'(\{\{)([ \t]+)((?:"(?:\\.|[^"\\])*"|[^#@}\s"][^#@}\s]*))((?:#[A-Za-z0-9_][A-Za-z0-9_-]*)?(?:[ \t]*[^\s}]+)*)([ \t]+)(\}\})',
+            #
+            # The tail is spelled so that one text has ONE reading: the part
+            # glued to the path starts with `#` or `@` (or follows a quoted
+            # path), and every later part is behind a required run. With the
+            # run optional, `(?:[ \t]*[^\s}]+)*` split a word 2^n ways, and
+            # `{{ chapter-one.crv#introduction` with no closer took 166s.
+            (_Scan(r'(\{\{)([ \t]+)((?:"(?:\\.|[^"\\])*"|[^#@}\s"][^#@}\s]*))',
+                   r'((?:(?<=")[^\s}]+|[#@][^\s}]*)?(?:[ \t]+[^\s}]+)*)([ \t]+)(\}\})',
+                   r'\}\}', stop=True),
              bygroups(Punctuation, Text, Name.Namespace, using(this, state='includeparts'), Text, Punctuation)),
 
             # CriticMarkup substitution and comment, before the forced family:
             # `{~old~>new~}` also matches the forced-strike shape.
-            (r'(\{~)([^\n]*?)(~>)([^\n]*?)(~\})',
+            (_Scan(r'(\{~)', r'([^\n]*?)(~>)([^\n]*?)(~\})', (r'~>', r'~\}')),
              bygroups(Punctuation, Generic.Deleted, Operator, Generic.Inserted, Punctuation)),
-            (r'(\{#)([^\n]*?)(#\})', bygroups(Punctuation, Comment, Punctuation)),
+            (_Scan(r'(\{#)', r'([^\n]*?)(#\})', r'#\}'), bygroups(Punctuation, Comment, Punctuation)),
 
             # The braced FORCED emphasis family. Braces make a delimiter apply
             # where the bare form would not - `my{_path_}name` is underline
             # inside a word - so the content is emphasis and the braces are its
             # delimiters, not an attribute block.
-            (r'(\{\*)([^\n]+?)(\*\})', bygroups(Punctuation, Generic.Strong, Punctuation)),
-            (r'(\{/)([^\n]+?)(/\})', bygroups(Punctuation, Generic.Emph, Punctuation)),
-            (r'(\{_)([^\n]+?)(_\})', bygroups(Punctuation, Generic.Underline, Punctuation)),
-            (r'(\{~)([^\n]+?)(~\})', bygroups(Punctuation, Generic.Deleted, Punctuation)),
+            (_Scan(r'(\{\*)', r'([^\n]+?)(\*\})', r'\*\}', least=1), bygroups(Punctuation, Generic.Strong, Punctuation)),
+            (_Scan(r'(\{/)', r'([^\n]+?)(/\})', r'/\}', least=1), bygroups(Punctuation, Generic.Emph, Punctuation)),
+            (_Scan(r'(\{_)', r'([^\n]+?)(_\})', r'_\}', least=1), bygroups(Punctuation, Generic.Underline, Punctuation)),
+            (_Scan(r'(\{~)', r'([^\n]+?)(~\})', r'~\}', least=1), bygroups(Punctuation, Generic.Deleted, Punctuation)),
 
             # Braced inline families. Sup and sub are braced-only in Carve: a
             # bare `^x^` or `,x,` is literal text.
-            (r'(\{\^)([^\n]+?)(\^\})', bygroups(Punctuation, Generic.Emph, Punctuation)),
-            (r'(\{,)([^\n]+?)(,\})', bygroups(Punctuation, Generic.Emph, Punctuation)),
-            (r'(\{=)([^\n]+?)(=\})', bygroups(Punctuation, Generic.Inserted, Punctuation)),
-            (r'(\{\+)([^\n]+?)(\+\})', bygroups(Punctuation, Generic.Inserted, Punctuation)),
+            (_Scan(r'(\{\^)', r'([^\n]+?)(\^\})', r'\^\}', least=1), bygroups(Punctuation, Generic.Emph, Punctuation)),
+            (_Scan(r'(\{,)', r'([^\n]+?)(,\})', r',\}', least=1), bygroups(Punctuation, Generic.Emph, Punctuation)),
+            (_Scan(r'(\{=)', r'([^\n]+?)(=\})', r'=\}', least=1), bygroups(Punctuation, Generic.Inserted, Punctuation)),
+            (_Scan(r'(\{\+)', r'([^\n]+?)(\+\})', r'\+\}', least=1), bygroups(Punctuation, Generic.Inserted, Punctuation)),
             # The braced en dash. A deletion needs content, so `{--}` is never
             # one, and `{--}x-}` is a dash followed by text, not a deletion.
             (r'\{--\}', Punctuation),
-            (r'(\{-)([^\n]+?)(-\})', bygroups(Punctuation, Generic.Deleted, Punctuation)),
-            (r'(\{%)(.*?)(%\})', bygroups(Comment.Preproc, Comment, Comment.Preproc)),
+            (_Scan(r'(\{-)', r'([^\n]+?)(-\})', r'-\}', least=1), bygroups(Punctuation, Generic.Deleted, Punctuation)),
+            (_Scan(r'(\{%)', r'(.*?)(%\})', r'%\}'), bygroups(Comment.Preproc, Comment, Comment.Preproc)),
 
             # An inline footnote carries content; a reference carries a label.
             (r'\^\[', Punctuation, 'inlinefootnote'),
-            (r'(\[\^)([^\]\n]+)(\])', bygroups(Punctuation, Name.Label, Punctuation)),
+            (_Scan(r'(\[\^)', r'([^\]\n]+)(\])', r'\]', stop=True), bygroups(Punctuation, Name.Label, Punctuation)),
 
             # A citation before a link: both open with `[`, and `[@key]` or
             # `[+@key]` would otherwise be read as a link label.
-            (r'(\[)(\+?@[^\]\n]+)(\])', bygroups(Punctuation, Name.Variable, Punctuation)),
+            (_Scan(r'(\[)(?=\+?@)', r'(\+?@[^\]\n]+)(\])', r'\]', stop=True), bygroups(Punctuation, Name.Variable, Punctuation)),
 
             # Image, then link, then a bare span. All three share the `[...]`
             # shape and differ only in the prefix and what follows.
-            (r'(!' + _LABEL + r')(\()([^)\n]*)(\))',
+            (_Scan(r'(!' + _LABEL + r')(\()', r'([^)\n]*)(\))', r'\)', stop=True),
              bygroups(String.Other, Punctuation, Name.Tag, Punctuation)),
             (r'(!' + _LABEL + r')(' + _LABEL + r')', bygroups(String.Other, Name.Label)),
-            (r'(' + _LABEL + r')(\()([^)\n]*)(\))',
+            (_Scan(r'(' + _LABEL + r')(\()', r'([^)\n]*)(\))', r'\)', stop=True),
              bygroups(Name.Entity, Punctuation, Name.Tag, Punctuation)),
             (r'(' + _LABEL + r')(' + _LABEL + r')', bygroups(Name.Entity, Name.Label)),
             (r'(' + _LABEL + r')(?=' + _ATTRS + r')', Name.Entity),
@@ -654,7 +812,7 @@ class CarveLexer(RegexLexer):
             # A cross-reference to a heading id.
             (r'(</)(#[\w-]+)(>)', bygroups(Punctuation, Name.Namespace, Punctuation)),
             # An autolink.
-            (r'(<)([a-zA-Z][\w+.-]*:[^>\s]+|[^>\s@]+@[^>\s]+)(>)',
+            (_Scan(r'(<)', r'([a-zA-Z][\w+.-]*:[^>\s]+|[^>\s@]+@[^>\s]+)(>)', r'[>\s]', stop=True),
              bygroups(Punctuation, Name.Tag, Punctuation)),
 
             # The `:name[...]` extension form.
@@ -702,17 +860,22 @@ class CarveLexer(RegexLexer):
             # OUTER `/`; the inner `*` is part of the two-char token". A space
             # after the opener or before the closer leaves an italic holding
             # literal asterisks: `a /* b */ c` is `<em>* b *</em>`.
-            (r'(?<![\w/])(/\*)(?!\s)([^\n]+?)(?<!\s)(\*/)(?![^\W_])',
+            (_Scan(r'(?<![\w/])(/\*)(?!\s)', r'([^\n]+?)(?<!\s)(\*/)(?![^\W_])',
+                   r'(?<!\s)\*/(?![^\W_])', least=1),
              bygroups(Punctuation, Generic.Strong, Punctuation)),
-            (r'(?<![\w*])(\*/)([^\n]+?)(/\*)(?![^\W_])',
+            (_Scan(r'(?<![\w*])(\*/)', r'([^\n]+?)(/\*)(?![^\W_])', r'/\*(?![^\W_])', least=1),
              bygroups(Punctuation, Generic.Strong, Punctuation)),
-            (r'(?<![\w*])(\*)(?!\*)(\S(?:[^\n]*?\S)?)(\*)(?![^\W_])',
+            (_Scan(r'(?<![\w*])(\*)(?!\*)', r'(\S(?:[^\n]*?\S)?)(\*)(?![^\W_])',
+                   r'(?<=\S)\*(?![^\W_])', least=1),
              bygroups(Punctuation, Generic.Strong, Punctuation)),
-            (r'(?<![\w/])(/)(?!/)(\S(?:[^\n]*?\S)?)(/)(?![^\W_])',
+            (_Scan(r'(?<![\w/])(/)(?!/)', r'(\S(?:[^\n]*?\S)?)(/)(?![^\W_])',
+                   r'(?<=\S)/(?![^\W_])', least=1),
              bygroups(Punctuation, Generic.Emph, Punctuation)),
-            (r'(?<![\w/])(_)(?!_)(\S(?:[^\n]*?\S)?)(_)(?![^\W_])',
+            (_Scan(r'(?<![\w/])(_)(?!_)', r'(\S(?:[^\n]*?\S)?)(_)(?![^\W_])',
+                   r'(?<=\S)_(?![^\W_])', least=1),
              bygroups(Punctuation, Generic.Underline, Punctuation)),
-            (r'(?<![\w~])(~)(?!~)(\S(?:[^\n]*?\S)?)(~)(?![^\W_])',
+            (_Scan(r'(?<![\w~])(~)(?!~)', r'(\S(?:[^\n]*?\S)?)(~)(?![^\W_])',
+                   r'(?<=\S)~(?![^\W_])', least=1),
              bygroups(Punctuation, Generic.Deleted, Punctuation)),
             # A bare `=` carrying a comparison or an arrow tail on its left is
             # not a highlight delimiter: PART 9's inline precedence excepts "a
@@ -725,7 +888,8 @@ class CarveLexer(RegexLexer):
             # `x =y z≤ w`, no mark at all. Nothing is guarded on the RIGHT,
             # also from the engine - `=>` is not an arrow any more, so
             # `a =foo=> b` marks `foo` and `a =>foo= b` marks `>foo`.
-            (r'(?<![\w=<>!])(=)(?!=)(\S(?:[^\n]*?\S)?)(?<![<>!])(=)(?![^\W_])',
+            (_Scan(r'(?<![\w=<>!])(=)(?!=)', r'(\S(?:[^\n]*?\S)?)(?<![<>!])(=)(?![^\W_])',
+                   r'(?<=\S)(?<![<>!])=(?![^\W_])', least=1),
              bygroups(Punctuation, Generic.Inserted, Punctuation)),
 
             # A mention and a tag, each one token: the sigil is part of the name

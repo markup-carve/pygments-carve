@@ -171,18 +171,20 @@ def test_a_forced_span_bypasses_both_guards():
     assert _emphasized(LEXER, 'a1{*b*}2c', 'b')
 
 
-def test_the_one_stated_divergence_from_the_engine():
-    """Nothing is guarded on the RIGHT of a `=`, and that is deliberate.
+def test_a_run_closes_at_its_first_guarded_closer():
+    """A run is closed by the first delimiter that satisfies the closer guards.
 
-    This lexer carries no delimiter-stack model, so it takes the nearest closer
-    that satisfies the guards rather than running the engine's close-first
-    resolution. The engine marks `f` in `a =f=>g= b` and this marks `f=>g`. It
-    is recorded rather than fixed, and recorded HERE so it cannot drift into
-    something else unnoticed (markup-carve/pygments-carve#36).
+    `a =f=>g= b` used to mark `f=>g` and was recorded as a divergence from the
+    engine, put down to the lexer having no delimiter stack. It was a quantifier:
+    the content was `\\S(?:[^\\n]*?\\S)?`, and that optional group is greedy, so a
+    one-character content was tried only after every longer one had failed.
+    Five corpus documents carried the same misreading, `01-emphasis-8` among
+    them: `(/x/) and a./b/` renders two spans, and the lexer read one.
     """
-    assert _emphasized(LEXER, 'a =f=>g= b', 'f=>g')
-    # The other half, which does match the engine: `=>` is not an arrow any
-    # more, so `a =>foo= b` marks `>foo`.
+    assert _emphasized(LEXER, 'a =f=>g= b', 'f')
+    assert _emphasized(LEXER, '(/x/) and a./b/', 'x')
+    assert _emphasized(LEXER, '(/x/) and a./b/', 'b')
+    # `=>` is not an arrow any more, so `a =>foo= b` marks `>foo`.
     assert _emphasized(LEXER, 'a =>foo= b', '>foo')
 
 

@@ -91,13 +91,6 @@ of its content, and the spec forbids encoding a blank payload line and no payloa
 line identically. A caller who wants the Pygments behavior can still pass either
 option (markup-carve/pygments-carve#33).
 
-**A `=` run is closed by the nearest guarded delimiter, not by a delimiter
-stack.** The word-boundary guards the grammar states for the bare set are
-carried on both ends, but the run resolution behind them is not: this lexer has
-no delimiter-stack model, so `a =f=>g= b` marks `f=>g` where the engine marks
-`f`. Pinned in `test_bare_emphasis.py` so it cannot drift into something else
-(markup-carve/pygments-carve#36).
-
 **An attribute block is one token.** `{#id .cls key="v"}` is emitted whole as
 `Name.Attribute` rather than split into parts, matching how the sibling grammars
 treat it.
