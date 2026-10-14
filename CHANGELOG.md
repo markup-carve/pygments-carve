@@ -24,17 +24,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - An escaped delimiter, or one inside a code span, a link, an image, a
   reference or an autolink, no longer closes a bare or braced span:
   `a *b\* c` stays text and `{=a \=} b=}` is one mark.
-  (markup-carve/pygments-carve#80)
+  (markup-carve/pygments-carve#80, markup-carve/pygments-carve#87)
 - A code span closes only on a run of its own width, may cross a line of its
   paragraph, and with no partner runs to the end of its paragraph; in a table
-  row it stops at the closing pipe.
-- An unclosed `^[` or `:name[` is text. As a pushed state it used to colour
-  the rest of the document.
+  row it stops at the closing pipe. (markup-carve/pygments-carve#87)
+- An unclosed `^[` or `:name[` is text. As a pushed state it used to color
+  the rest of the document. (markup-carve/pygments-carve#87)
 - A list marker, ordered marker or caption on a paragraph's later line is
   paragraph text, and a table row needs its closing pipe.
+  (markup-carve/pygments-carve#87)
 - A block on a container's marker line is read as a block: `> - item`,
   `> # H`, `- > q`, `- # H` and `: - item` under a term. A fence on an item's or
   a description's marker line, or behind a quote marker, pairs with its closer.
+  (markup-carve/pygments-carve#87)
 
 ## [0.1.0] - 2026-10-08
 
