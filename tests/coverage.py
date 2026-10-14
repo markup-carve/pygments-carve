@@ -65,6 +65,23 @@ def _scoped(ttype):
     return ttype not in UNSCOPED and ttype is not Error
 
 
+def merged(lexer, source):
+    """The tokens of ``source``, with neighbours of one type joined.
+
+    Inline content is emitted as runs that break at every character which could
+    start a construct, so `b*c` inside a strong is three `Generic.Strong`
+    tokens. Two neighbours of one type read as one, and are measured as one.
+    Punctuation is left alone: two delimiters side by side are two delimiters.
+    """
+    out = []
+    for ttype, value in lexer.get_tokens(source):
+        if out and out[-1][0] is ttype and ttype is not Punctuation:
+            out[-1] = (ttype, out[-1][1] + value)
+        else:
+            out.append((ttype, value))
+    return out
+
+
 def scope_of(lexer, source, payload):
     """The type of the token scoping ``payload``, or None.
 
@@ -73,7 +90,7 @@ def scope_of(lexer, source, payload):
     like ``{- -}`` or ``/*b*/`` into three tokens where Prism emits one. The
     exact match keeps a run that crosses its own closer from passing.
     """
-    tokens = list(lexer.get_tokens(source))
+    tokens = merged(lexer, source)
     for ttype, value in tokens:
         if payload in value and _scoped(ttype):
             return ttype

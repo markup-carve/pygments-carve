@@ -92,7 +92,14 @@ INCLUDED = 'inline'
 CORPUS = pathlib.Path(__file__).parent.parent / 'spec' / 'tests' / 'corpus'
 DOCUMENTS = sorted(CORPUS.glob('*.crv')) if CORPUS.is_dir() else []
 
-LEXER = CarveLexer()
+#: Fence bodies are read verbatim here, so what these pins hold is how a fence
+#: PAIRS, not which languages Pygments happens to know. Handing a body to its
+#: language's lexer is pinned in test_fence_body.py.
+LEXER = CarveLexer(handlecodeblocks=False)
+
+
+def build_verbatim(source):
+    return build_lexer(source, handlecodeblocks=False)
 SOURCE = lexer_source()
 RULES = state_rules(SOURCE, BLOCK)
 
@@ -230,7 +237,7 @@ def _named(pin):
 
 
 def _mutants():
-    return [build_lexer(without_rule(SOURCE, i, BLOCK)) for i in range(len(RULES))]
+    return [build_verbatim(without_rule(SOURCE, i, BLOCK)) for i in range(len(RULES))]
 
 
 MUTANTS = _mutants()
@@ -593,7 +600,7 @@ def test_removing_the_guard_takes_the_shape(guard):
     Deleting the whole rule would make every one of these pass for the wrong
     reason, so the clause is removed on its own and the rule left in place.
     """
-    mutant = build_lexer(
+    mutant = build_verbatim(
         without_clause(SOURCE, guard.index, guard.clause, guard.occurrence, BLOCK))
     assert scoped_run(mutant, guard.sample) == guard.taken, (
         'without guard %r the lexer is expected to read %r as %r; if it no '
@@ -627,7 +634,7 @@ def test_the_blank_line_guard_is_what_keeps_the_fence_search_cheap():
     exponential search does not finish 2000 lines at all. The unguarded lexer is measured where it can
     still finish: eight more blank lines cost it 180x.
     """
-    unguarded = build_lexer(without_clause(SOURCE, 1, r'(?!\2)', 0, BLOCK))
+    unguarded = build_verbatim(without_clause(SOURCE, 1, r'(?!\2)', 0, BLOCK))
 
     def blanks(n):
         return '%%%\n' + ' \n' * n
@@ -683,7 +690,7 @@ DEFLIST_PINS = [
          (Punctuation, '*'), (Generic.Strong, 'x'), (Punctuation, '*')]),
 ]
 
-DEFLIST_MUTANTS = [build_lexer(without_rule(SOURCE, i, DEFLIST))
+DEFLIST_MUTANTS = [build_verbatim(without_rule(SOURCE, i, DEFLIST))
                    for i in range(len(DEFLIST_RULES))]
 
 
@@ -745,7 +752,7 @@ def test_the_deflist_guard_refuses_the_shape(guard):
 
 @pytest.mark.parametrize('guard', DEFLIST_GUARDS, ids=_guarded)
 def test_removing_the_deflist_guard_takes_the_shape(guard):
-    mutant = build_lexer(
+    mutant = build_verbatim(
         without_clause(SOURCE, guard.index, guard.clause, guard.occurrence, DEFLIST))
     assert scoped_run(mutant, guard.sample) == guard.taken
 

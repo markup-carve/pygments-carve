@@ -80,6 +80,9 @@ SHAPES = {
     'escaped closer': '*a \\* ',
     'code before an opener': '`a` *b ',
     'link before an opener': '[a](u) *b ',
+    # Span content is lexed again, as inline content of its own.
+    'span inside a span': '{=a *b* c=} ',
+    'emphasis in a link': '[a *b*](u) ',
 }
 
 #: Shapes repeated line after line: openers whose search crosses lines.
@@ -89,6 +92,8 @@ MULTILINE = {
     'paragraph of markers': 'a\n- b\n',
     'unclosed code per line': 'a `b\n',
     'unclosed inline note per line': 'a ^[b\n',
+    'bare opener per line': '*a \n',
+    'braced opener per line': '{*a \n',
 }
 
 #: Block lines whose content is lexed by a state of its own rather than `inline`.
@@ -183,12 +188,12 @@ def test_the_shape_is_linear_in_a_block_line(name, unit):
 _OLD = [
     ('a bare closer scanned for, not looked up',
      r"""(r'(?<![\w*])(\*)(?!\*)(\S(?:[^\n]*?\S)?)(\*)(?![^\W_])',""",
-     """(_Scan(r'(?<![\\w*])(\\*)(?!\\*)', r'(\\S(?:[^\\n]*?\\S)?)(\\*)(?![^\\W_])',
-                   r'(?<=\\S)\\*(?![^\\W_])', least=1, masked='bare'),""",
+     """(_Scan(r'(?<![\\w*])(\\*)(?!\\*)', r'(\\S(?:[\\s\\S]*?\\S)?)(\\*)(?![^\\W_])',
+                   r'(?<=\\S)\\*(?![^\\W_])', least=1, masked='bare', reach='block'),""",
      '*a '),
     ('the CriticMarkup substitution, scanned twice',
      r"""(r'(\{~)([^\n]*?)(~>)([^\n]*?)(~\})',""",
-     r"""(_Scan(r'(\{~)', r'([^\n]*?)(~>)([^\n]*?)(~\})', (r'~>', r'~\}'), masked='bare'),""",
+     r"""(_Scan(r'(\{~)', r'([\s\S]*?)(~>)([\s\S]*?)(~\})', (r'~>', r'~\}'), masked='bare', reach='block'),""",
      '{~a ~>'),
     ('an include part separator that could be empty',
      r"""(r'(\{\{)([ \t]+)((?:"(?:\\.|[^"\\])*"|[^#@}\s"][^#@}\s]*))((?:#[A-Za-z0-9_][A-Za-z0-9_-]*)?(?:[ \t]*[^\s}]+)*)([ \t]+)(\}\})',""",

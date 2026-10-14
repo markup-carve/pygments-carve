@@ -37,24 +37,35 @@ BARE = {
 def runs(lexer, source):
     """Every bare emphasis run the lexer scopes, as ``(offset, source text)``.
 
-    A run is the shape the five bare rules emit and nothing else: a
-    single-character ``Punctuation`` delimiter, the content under the token type
-    that delimiter carries, and the same delimiter again. The braced forced
-    family emits a TWO-character delimiter, so it cannot be mistaken for one.
+    A run is what the five bare rules emit: a single-character ``Punctuation``
+    delimiter, then the content, then the same delimiter again. The content is
+    lexed as inline content of its own, so it may be several tokens with other
+    constructs among them; at least one carries the type that delimiter gives
+    its content. The braced forced family emits a TWO-character delimiter, so
+    it cannot be mistaken for one.
     """
     tokens = list(lexer.get_tokens_unprocessed(source))
     found = []
-    for i in range(1, len(tokens) - 1):
-        start, ttype, value = tokens[i]
-        opener, closer = tokens[i - 1], tokens[i + 1]
-        if opener[1] is not Punctuation or closer[1] is not Punctuation:
+    i = 0
+    while i < len(tokens):
+        start, ttype, delimiter = tokens[i]
+        kind = BARE.get(delimiter) if ttype is Punctuation else None
+        if kind is None:
+            i += 1
             continue
-        delimiter = opener[2]
-        if len(delimiter) != 1 or closer[2] != delimiter:
+        for j in range(i + 1, len(tokens)):
+            if tokens[j][1] is Punctuation and tokens[j][2] == delimiter:
+                break
+        else:
+            i += 1
             continue
-        if BARE.get(delimiter) is not ttype:
+        inner = tokens[i + 1:j]
+        if not inner or not any(t is kind for _, t, _ in inner):
+            i += 1
             continue
-        found.append((opener[0], delimiter + value + delimiter))
+        end = tokens[j][0] + len(delimiter)
+        found.append((start, source[start:end]))
+        i = j + 1
     return found
 
 

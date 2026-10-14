@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- A fence naming a language Pygments knows is highlighted in that language,
+  and a raw block's `=FORMAT` names its language the same way. Code callout
+  markers and a quote's line markers keep their own scope. The
+  `handlecodeblocks` option turns it off, as on Pygments' Markdown lexer.
+  (markup-carve/pygments-carve#88)
+
 ### Fixed
 
 - Lexing stays linear on long lines. An include directive with no closer
@@ -37,6 +45,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `> # H`, `- > q`, `- # H` and `: - item` under a term. A fence on an item's or
   a description's marker line, or behind a quote marker, pairs with its closer.
   (markup-carve/pygments-carve#87)
+- The content of an emphasis span and an inline link's text are lexed as
+  inline content, so `{=a *b* c=}` marks a strong inside the highlight. A
+  braced span's own delimiter is literal inside it, as `{*a *b* c*}` renders.
+  (markup-carve/pygments-carve#88)
+- A bare or braced span and a `{%...%}` template span may cross a line of
+  their paragraph. (markup-carve/pygments-carve#88)
+- `::: >` and `::: \` scope their sigil like `::: |`, and `<1>` outside a
+  fence is text, as the engine renders it. (markup-carve/pygments-carve#88)
+- Paragraph text is emitted as runs rather than one token per character.
+  (markup-carve/pygments-carve#88)
 
 ## [0.1.0] - 2026-10-08
 

@@ -111,7 +111,7 @@ def without_clause(source, index, clause, occurrence=0, state=INLINE):
     return '\n'.join(lines[:first] + mutated.split('\n') + lines[past:])
 
 
-def build_lexer(source):
+def build_lexer(source, **options):
     """A ``CarveLexer`` built from ``source`` rather than from the import.
 
     The module is executed into a throwaway namespace, so the mutant class is
@@ -119,7 +119,7 @@ def build_lexer(source):
     """
     namespace = {'__name__': 'pygments_carve._mutant'}
     exec(compile(source, '<mutant lexer>', 'exec'), namespace)
-    return namespace['CarveLexer']()
+    return namespace['CarveLexer'](**options)
 
 
 def rule_patterns(lexer, state=INLINE):
