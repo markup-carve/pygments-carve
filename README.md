@@ -84,6 +84,17 @@ block at all and the corpus renders it as a paragraph. Nor does a body longer
 than 512 lines; that bound is what keeps a file of openers that can never pair
 from costing a scan of the document per line.
 
+A fence opened inside a container pairs too: on a list item's or a
+description's marker line, with its closer at that item's content column, and
+behind a quote marker, with every line up to the closer carrying the marker.
+The same 512-line bound applies.
+
+**A paragraph is recognized where one starts after a blank line.** List markers
+and captions do not interrupt a paragraph, so `para` followed by `- x` is one
+paragraph and the second line is not scoped as a list. A regex cannot see what
+the line above was, so a paragraph that follows a heading or a closed block
+with no blank line between them keeps the block reading on its later lines.
+
 **Pygments' `stripnl` and `ensurenl` are off.** They strip a document's leading
 and trailing newlines and append one that is not there, which is reasonable for
 a programming language and not for Carve: a fence keeps the blank line at the end

@@ -256,6 +256,11 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
     `535-*` entries arrived with the bump to carve 9d6d06c, on the same
     shape: a fence or an overindented marker inside a quoted item, which the
     unguarded rules read as a bare run.
+
+    Five of those left when blocks nested in a container started being read
+    as blocks: `276-*-5`, `455-*-2`, `519-*-2` and the two `535-*` entries
+    hold a fence or a marker behind `>`, `-` or `:`, which the container
+    rules now take before the inline state sees the delimiters.
     """
     hits = sorted(p.stem for p in DOCUMENTS
                   if _case(p)[1] is not None
@@ -277,10 +282,6 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         '-5',
         '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters'
         '-7',
-        '276-a-fence-opened-on-a-list-marker-line-body-below-the-content-colu'
-        'mn-5',
-        '455-an-unterminated-fence-on-a-nested-lead-in-a-description-body-own'
-        's-its-body-2',
         '465-an-underscore-pair-in-text-is-escaped-where-the-line-would-pair-'
         'it',
         '467-a-bare-closer-does-not-reach-inside-a-link-destination',
@@ -291,9 +292,6 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         'e-pairs-2',
         '484-a-delimiter-after-an-underscore-or-slash-opens-only-when-that-on'
         'e-pairs-6',
-        '519-a-shifted-fence-in-a-quoted-item-stores-no-continuation-claim-2',
-        '535-a-marker-line-opaque-quote-keeps-overindented-markers-literal-11',
-        '535-a-marker-line-opaque-quote-keeps-overindented-markers-literal-12',
         '76-doubled-emphasis-delimiters',
         '79-two-char-delimiter-runs',
     ], hits
