@@ -804,6 +804,8 @@ PLUS_CONTEXTS = [
     ('+ x | y |\n', False),
     ('| a | b |\n\n+ x | y |\n', False),
     ('# H |\n+ b |\n', False),
+    ('+ x |\n+ y |\n', False),
+    ('- a\n' + '  line\n' * 300 + '+\n```\nx\n```\n', True),
 ]
 
 

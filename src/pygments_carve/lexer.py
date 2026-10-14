@@ -827,9 +827,8 @@ _LIST_LINE = re.compile(
     r'[ \t]*(?:[-*]|' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?[ \t]+[^ \t\n]')
 _HOLDER_LINE = re.compile(r'[ \t]*(?:>(?=[ \t]|$)|::?[ \t]+[^ \t\n])')
 _ROW_LINE = re.compile(
-    r'[ \t]*' + _MARKER_RUN + r'(?:\||\+[ \t])[^\n]*\|(?:' + _ATTRS + r')?[ \t]*$')
-#: How far back a lone `+` looks for its container; bounds a run of them.
-_LOOKBACK = 200
+    r'[ \t]*' + _MARKER_RUN + r'\|[^\n]*\|(?:' + _ATTRS + r')?[ \t]*$')
+_PLUS_ROW_LINE = re.compile(r'[ \t]*\+[ \t][^\n]*\|(?:' + _ATTRS + r')?[ \t]*$')
 
 
 def _line_above(text, start):
@@ -839,7 +838,19 @@ def _line_above(text, start):
     return text[text.rfind('\n', 0, start - 1) + 1:start - 1]
 
 
-def _plus_attaches(text, start):
+def _decisions(lexer, text):
+    """Per-document record of each `+` line's reading, keyed by line offset.
+
+    Reusing the reading of the nearest `+` line above keeps the lookback linear.
+    """
+    memo = getattr(lexer, '_plus_decisions', None)
+    if memo is None or memo[0] is not text:
+        memo = (text, {})
+        lexer._plus_decisions = memo
+    return memo[1]
+
+
+def _plus_attaches(text, start, decided):
     """Does a lone `+` at `start` attach to an open list item, quote or description?
 
     A list item stays open across blank lines; a quote or a description does
@@ -847,7 +858,7 @@ def _plus_attaches(text, start):
     """
     blank = False
     end = start
-    for _ in range(_LOOKBACK):
+    while True:
         line = _line_above(text, end)
         if line is None:
             return False
@@ -855,20 +866,22 @@ def _plus_attaches(text, start):
         if not line.strip():
             blank = True
         elif line.strip() == '+':
-            continue
+            if not blank and end in decided:
+                return decided[end]
         elif _LIST_LINE.match(line):
             return True
         elif _HOLDER_LINE.match(line):
             return not blank
         elif line[0] not in ' \t' and (blank or not line[0].isalnum()):
             return False
-    return False
 
 
 def _continuation_marker(lexer, match):
     margin, plus, rest = match.group(1, 2, 3)
+    decided = _decisions(lexer, match.string)
+    attaches = _plus_attaches(match.string, match.start(), decided)
+    decided[match.start()] = attaches
     yield match.start(1), Text, margin
-    attaches = _plus_attaches(match.string, match.start())
     yield match.start(2), Punctuation if attaches else Text, plus
     yield match.start(3), Text, rest
 
@@ -876,8 +889,15 @@ def _continuation_marker(lexer, match):
 def _continuation_row(lexer, match):
     """A `+ ... |` line is a row only directly under a table row."""
     margin, plus, rest = match.group(1, 2, 3)
+    decided = _decisions(lexer, match.string)
     above = _line_above(match.string, match.start())
-    is_row = above is not None and _ROW_LINE.match(above) is not None
+    if above is None:
+        is_row = False
+    elif _PLUS_ROW_LINE.match(above):
+        is_row = decided.get(match.start() - len(above) - 1, False)
+    else:
+        is_row = _ROW_LINE.match(above) is not None
+    decided[match.start()] = is_row
     yield match.start(1), Text, margin
     yield match.start(2), Punctuation if is_row else Text, plus
     stack = ('root', 'tablerow') if is_row else ('root', 'paragraph')
