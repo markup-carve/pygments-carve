@@ -83,6 +83,10 @@ SHAPES = {
     # Span content is lexed again, as inline content of its own.
     'span inside a span': '{=a *b* c=} ',
     'emphasis in a link': '[a *b*](u) ',
+    # Braced spans are paired once per document, nesting included.
+    'nested braced span': '{*a {*b*} ',
+    'bare closer in a braced span': '*a {=b*=} ',
+    'comment openers among braced ones': '{*a {#b {%c ',
 }
 
 #: Shapes repeated line after line: openers whose search crosses lines.
@@ -193,7 +197,7 @@ _OLD = [
      '*a '),
     ('the CriticMarkup substitution, scanned twice',
      r"""(r'(\{~)([^\n]*?)(~>)([^\n]*?)(~\})',""",
-     r"""(_Scan(r'(\{~)', r'([\s\S]*?)(~>)([\s\S]*?)(~\})', (r'~>', r'~\}'), masked='bare', reach='block'),""",
+     r"""(_Scan(r'(\{~)', r'([\s\S]*?)(~>)([\s\S]*?)(~\})', (r'~>', r'~\}'), masked='critic', reach='block'),""",
      '{~a ~>'),
     ('an include part separator that could be empty',
      r"""(r'(\{\{)([ \t]+)((?:"(?:\\.|[^"\\])*"|[^#@}\s"][^#@}\s]*))((?:#[A-Za-z0-9_][A-Za-z0-9_-]*)?(?:[ \t]*[^\s}]+)*)([ \t]+)(\}\})',""",

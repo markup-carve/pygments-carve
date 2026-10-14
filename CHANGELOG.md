@@ -55,6 +55,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   fence is text, as the engine renders it. (markup-carve/pygments-carve#88)
 - Paragraph text is emitted as runs rather than one token per character.
   (markup-carve/pygments-carve#88)
+- A braced span nests, its own kind too: `{*a {*b*} c*}` is a strong inside a
+  strong, and an outer opener left without a closer stays literal. A bare
+  closer inside a braced span no longer closes a bare span: `*a {=b*=} c*` is
+  one strong holding a mark. (markup-carve/pygments-carve#89)
 
 ## [0.1.0] - 2026-10-08
 
