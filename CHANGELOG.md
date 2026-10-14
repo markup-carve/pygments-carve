@@ -59,6 +59,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   strong, and an outer opener left without a closer stays literal. A bare
   closer inside a braced span no longer closes a bare span: `*a {=b*=} c*` is
   one strong holding a mark. (markup-carve/pygments-carve#89)
+- A lone `+` or a `+ a |` line under a definition term is the term's text,
+  as the engine renders it, not a continuation marker or row.
+  (markup-carve/pygments-carve#90)
 
 ## [0.1.0] - 2026-10-08
 
