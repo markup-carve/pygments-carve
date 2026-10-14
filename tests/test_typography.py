@@ -48,6 +48,8 @@ from pygments.token import Name, Operator, Punctuation, Text
 
 from pygments_carve import CarveLexer
 
+from coverage import merged
+
 from lexerrules import (
     INLINE,
     build_lexer,
@@ -105,7 +107,7 @@ ALTERNATIVES = alternatives() if GRAMMAR.is_file() else []
 
 
 def scoped(lexer, sample):
-    return tuple((t, v) for t, v in lexer.get_tokens(sample)
+    return tuple((t, v) for t, v in merged(lexer, sample)
                  if t not in (Text, Text.Whitespace))
 
 

@@ -43,6 +43,8 @@ OTHER_CONSTRUCT = {
         (Generic.Emph, _ITALIC),
     'a space after the bold-italic opener is refused by that guard alone':
         (Generic.Emph, _ITALIC),
+    'an empty combined token is an italic, not a bold-italic':
+        (Generic.Emph, _ITALIC),
     'a colon in an attribute id':
         (Name.Variable.Instance, 'the engine renders `#a` as a tag'),
     'a quoted title makes a figure opener a generic container':

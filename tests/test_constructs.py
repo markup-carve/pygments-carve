@@ -36,13 +36,17 @@ from coverage import load_constructs, payload_of, scope_of
 
 #: construct name -> why this lexer does not scope its payload.
 #:
-#: Empty, and meant to stay that way. Every construct in the shared inventory
-#: carries a scope - including ``reference image`` and ``collapsed reference
-#: image``, the two the vendored copy was missing. The mechanism is kept because
-#: the inventory grows: a construct added upstream shows up here as a failure,
-#: and the choice is then to lex it or to write down why not - never to let it
-#: pass unnoticed.
-NOT_COVERED = {}
+#: One entry, where the shared inventory and the engine disagree and this lexer
+#: follows the engine. Every other construct in the inventory carries a scope.
+#: The mechanism is kept because the inventory grows: a construct added upstream
+#: shows up here as a failure, and the choice is then to lex it or to write down
+#: why not - never to let it pass unnoticed.
+NOT_COVERED = {
+    'code callout': 'the engine renders `<1>` outside a fence as text '
+                    '(`<1> explains the line` is `<p>&lt;1&gt; explains the line</p>` '
+                    'in carve 0.1.11), so scoping it was an over-color; the marker '
+                    'inside a fence is `callout marker in fence`, and still scoped',
+}
 
 LEXER = CarveLexer()
 CONSTRUCTS = load_constructs() if inventory.available() else []

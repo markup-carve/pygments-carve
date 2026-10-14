@@ -43,7 +43,16 @@ Spec: https://markup-carve.github.io/carve/
 import bisect
 import re
 
-from pygments.lexer import RegexLexer, RegexLexerMeta, bygroups, include, using, this
+from pygments.lexer import (
+    RegexLexer,
+    RegexLexerMeta,
+    bygroups,
+    do_insertions,
+    include,
+    using,
+    this,
+)
+from pygments.lexers import get_lexer_by_name
 from pygments.token import (
     Comment,
     Generic,
@@ -56,6 +65,7 @@ from pygments.token import (
     String,
     Text,
 )
+from pygments.util import ClassNotFound, get_bool_opt
 
 __all__ = ['CarveLexer']
 
@@ -251,7 +261,29 @@ def _paragraph_end(text, at):
     return breaks[i] if i < len(breaks) else len(text)
 
 
+#: A line that is a block of its own and ends with its line: a span opened on
+#: it cannot run onto the next line, though that line continues no paragraph.
+_ONE_LINE_BLOCK = (r'^[ \t]*(?:#{1,6}[ \t]|>|\^[ \t]|\||::|%%|\[\^?[^\]\n]*\]:|\*\[)'
+                   r'[^\n]*(\n)')
+
+
+def _block_end(text, at):
+    """Where a span opened at ``at`` must close: its paragraph's end, or its
+    line's end when the line is a block of its own (a heading, a quote line, a
+    caption, a table row, a term or a definition)."""
+    found = _indexes(text)
+    ends = found.get('block')
+    if ends is None:
+        ends = set(_positions(text, 'paragraph', r'\n' + _PARAGRAPH_BREAK))
+        ends.update(m.start(1) for m in re.finditer(_ONE_LINE_BLOCK, text, re.M))
+        ends = found['block'] = sorted(ends)
+    i = bisect.bisect_left(ends, at)
+    return ends[i] if i < len(ends) else len(text)
+
+
 def _limit(text, at, reach):
+    if reach == 'block':
+        return _block_end(text, at)
     return _paragraph_end(text, at) if reach == 'paragraph' else _line_end(text, at)
 
 
@@ -522,12 +554,15 @@ def _tight(text, at, unclosed):
     if char == '`':
         if at and text[at - 1] == '`':
             return None
+        if text.startswith('```', at) and not text[text.rfind('\n', 0, at) + 1:at].strip():
+            # A fence line, which the block rules read; it is not a code span.
+            return None
         end = at
         while end < len(text) and text[end] == '`':
             end += 1
         close = _code_close(text, end, end - at, 'paragraph')
         if close is None:
-            return (at, _line_end(text, end)) if unclosed else None
+            return (at, _block_end(text, end)) if unclosed else None
         return at, close
     images, links, angles = _tight_labels()
     if char == '<':
@@ -557,7 +592,7 @@ def _masks(text, unclosed):
     `*a `b*` c*` as one strong holding a code span. Found once per document,
     left to right, so a construct inside another one is not a second mask.
 
-    A backtick run with no partner masks the rest of its line from a BARE
+    A backtick run with no partner masks the rest of its block from a BARE
     closer (``unclosed``), because the run reaches the end of its paragraph:
     `*a ` b*` is a literal `*a` and a code span. A braced closer still closes
     over it, `{*`a*}` being a strong holding an unclosed code span (corpus 12).
@@ -578,6 +613,76 @@ def _masks(text, unclosed):
                 reach = span[1]
         hit = found[key] = (starts, ends)
     return hit
+
+
+#: A fence body read verbatim, and one behind a quote marker. Each is also the
+#: placeholder `_fenced` swaps for the language's own lexer.
+_BODY = using(this, state='fencebody')
+_QUOTED_BODY = using(this, state='quotedfencebody')
+
+_CALLOUT = re.compile(r'<\d+>')
+_QUOTE_MARKER = re.compile(r'^[ \t]*>+[ \t]?', re.M)
+
+#: Language name -> its lexer, or None where Pygments has none.
+_LANGUAGES = {}
+
+
+def _language(name):
+    hit = _LANGUAGES.get(name, False)
+    if hit is False:
+        try:
+            hit = get_lexer_by_name(name, stripnl=False, ensurenl=False)
+        except ClassNotFound:
+            hit = None
+        _LANGUAGES[name] = hit
+    return hit
+
+
+def _delegated(language, quoted):
+    """A body action lexing the body with ``language``.
+
+    The code callout markers, and behind a quote each line's marker, are taken
+    out before the language's lexer sees the code and put back as their own
+    tokens: a `<1>` is Carve, and `> ` is the quote's, in any language.
+    """
+    def action(lexer, match, ctx=None):
+        text = match.group()
+        marks = [(m.start(), m.end(), Name.Constant) for m in _CALLOUT.finditer(text)]
+        if quoted:
+            marks += [(m.start(), m.end(), Punctuation)
+                      for m in _QUOTE_MARKER.finditer(text) if m.end() > m.start()]
+        code, insertions, at, removed = [], [], 0, 0
+        for start, end, ttype in sorted(marks):
+            code.append(text[at:start])
+            insertions.append((start - removed, [(0, ttype, text[start:end])]))
+            removed += end - start
+            at = end
+        code.append(text[at:])
+        base = match.start()
+        tokens = language.get_tokens_unprocessed(''.join(code))
+        for index, ttype, value in do_insertions(insertions, tokens):
+            yield base + index, ttype, value
+    return action
+
+
+def _fenced(lang, *actions):
+    """``bygroups(*actions)``, with the body read by the language named in
+    group ``lang`` when Pygments knows it, as Pygments' own Markdown lexer
+    does. A raw block's `=FORMAT` names its language the same way. Off with
+    the ``handlecodeblocks`` option, and for a language Pygments does not know.
+    """
+    verbatim = bygroups(*actions)
+
+    def action(lexer, match):
+        name = (match.group(lang) or '').lstrip('=')
+        language = _language(name) if name and lexer.handlecodeblocks else None
+        if language is None:
+            return verbatim(lexer, match)
+        return bygroups(*[
+            _delegated(language, quoted=part is _QUOTED_BODY)
+            if part is _BODY or part is _QUOTED_BODY else part
+            for part in actions])(lexer, match)
+    return action
 
 
 def _silent(lexer, match):
@@ -630,6 +735,9 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
         options.setdefault('stripnl', False)
         options.setdefault('ensurenl', False)
         super().__init__(**options)
+        # The Markdown lexer's option, with its default: a fence naming a
+        # language Pygments knows is highlighted in that language.
+        self.handlecodeblocks = get_bool_opt(options, 'handlecodeblocks', True)
 
     tokens = {
         'root': [
@@ -747,17 +855,17 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
              r'([ \t]*)(=[a-zA-Z][\w+.-]*)([^\n]*)(\n)'
              r'((?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?)'
              r'(\2)(\3\4*)([ \t]*)$',
-             bygroups(Text, Text, Punctuation, None, Text, Keyword.Type,
-                      using(this, state='infostring'), Text,
-                      using(this, state='fencebody'), Text, Punctuation, Text)),
+             _fenced(6, Text, Text, Punctuation, None, Text, Keyword.Type,
+                     using(this, state='infostring'), Text,
+                     _BODY, Text, Punctuation, Text)),
             (r'^((?:\A\ufeff)?)([ \t]*)((`|~)\4{2,})'
              r'(?= ?(?:' + _FENCE_INFO + r')?[ \t]*$)'
              r'([ \t]*)([a-zA-Z][\w+#.-]*)?([^\n]*)(\n)'
              r'((?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?)'
              r'(\2)(\3\4*)([ \t]*)$',
-             bygroups(Text, Text, Punctuation, None, Text, Name.Builtin,
-                      using(this, state='infostring'), Text,
-                      using(this, state='fencebody'), Text, Punctuation, Text)),
+             _fenced(6, Text, Text, Punctuation, None, Text, Name.Builtin,
+                     using(this, state='infostring'), Text,
+                     _BODY, Text, Punctuation, Text)),
 
             # A FENCE LINE THIS LEXER DOES NOT PAIR: an opener with no matching
             # closer ahead, and the closer of a pair the rules above did not
@@ -783,18 +891,19 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # quote marker. `_ContainerFence` walks the body, because neither
             # closer can be found by a pattern.
             (_ITEM_FENCE,
-             bygroups(Text, Text, Punctuation, Text, Punctuation, None, Text,
-                      using(this, state='fencelang'), using(this, state='infostring'),
-                      Text, using(this, state='fencebody'), Text, Punctuation, Text)),
+             _fenced(8, Text, Text, Punctuation, Text, Punctuation, None, Text,
+                     using(this, state='fencelang'), using(this, state='infostring'),
+                     Text, _BODY, Text, Punctuation, Text)),
             (_QUOTED_FENCE,
-             bygroups(Text, Text, Punctuation, Text, Punctuation, None, Text,
-                      using(this, state='fencelang'), using(this, state='infostring'),
-                      Text, using(this, state='quotedfencebody'), Text, Punctuation,
-                      Text, Punctuation, Text)),
+             _fenced(8, Text, Text, Punctuation, Text, Punctuation, None, Text,
+                     using(this, state='fencelang'), using(this, state='infostring'),
+                     Text, _QUOTED_BODY, Text, Punctuation,
+                     Text, Punctuation, Text)),
 
             # Container divs. A reserved kind word (note, tip, figure, ...) names
-            # a known container; `:::` followed by `|` is the layout form.
-            (r'^(' + _MARGIN + r')(:{3,})([ \t]*)(\|)', bygroups(Text, Punctuation, Text, Operator)),
+            # a known container; `:::` followed by a sigil is a layout form: `|`
+            # a line block, `>` a quote, `\` hard breaks.
+            (r'^(' + _MARGIN + r')(:{3,})([ \t]*)([|>\\])', bygroups(Text, Punctuation, Text, Operator)),
             (r'^(' + _MARGIN + r')(:{3,})([ \t]*)([a-zA-Z][\w-]*)?([^\n]*)',
              bygroups(Text, Punctuation, Text, Keyword.Namespace,
                       using(this, state='infostring'))),
@@ -923,9 +1032,9 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'^(' + _MARGIN + r')(::)( +[ \t]*)(?=[^ \t\n])',
              bygroups(Text, Punctuation, Text), 'heading'),
             (_DESCRIPTION_FENCE,
-             bygroups(Text, Text, Punctuation, Text, Punctuation, None, Text,
-                      using(this, state='fencelang'), using(this, state='infostring'),
-                      Text, using(this, state='fencebody'), Text, Punctuation, Text)),
+             _fenced(8, Text, Text, Punctuation, Text, Punctuation, None, Text,
+                     using(this, state='fencelang'), using(this, state='infostring'),
+                     Text, _BODY, Text, Punctuation, Text)),
             (r'^(' + _MARGIN + r')(:)(?= +[ \t]*[^ \t\n])' + _NESTED_TAIL,
              bygroups(Text, Punctuation, Text, using(this, state='root'))),
             include('block'),
@@ -1032,6 +1141,17 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
         # ------------------------------------------------------------------
         'inline': [
             include('inlinecontent'),
+            include('opencode'),
+            # Content as runs rather than one token per character. A run starts
+            # at content, so a line's margin still reaches `.` a character at a
+            # time, and the block rules that take a margin whole stay the only
+            # readers that do.
+            (r'(?![ \t])' + _plain_run(), Text),
+            (r'\n', Text),
+            (r'.', Text),
+        ],
+
+        'opencode': [
             # A code span in a paragraph closes on a later line of it, and a
             # run with no partner runs to the paragraph's end: the engine reads
             # `x `a` `b` as two spans, the second to the end. The one-line
@@ -1042,9 +1162,53 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
              bygroups(Operator, Punctuation, String.Other, Punctuation)),
             (_Code(r'(?<!`)(`+)(?!`)', r'([\s\S]*?)(\1)?', reach='paragraph', unclosed=True),
              bygroups(Punctuation, String.Backtick, Punctuation)),
-            (r'\n', Text),
-            (r'.', Text),
         ],
+
+        # The content of an emphasis span, lexed as inline content of its own,
+        # so a span inside a span is scoped: `{=a *b* c=}` marks a strong.
+        'strong': [
+            include('inlinecontent'),
+            include('opencode'),
+            (_plain_run() + r'|[^\n]|\n', Generic.Strong),
+        ],
+        'emph': [
+            include('inlinecontent'),
+            include('opencode'),
+            (_plain_run() + r'|[^\n]|\n', Generic.Emph),
+        ],
+        'underline': [
+            include('inlinecontent'),
+            include('opencode'),
+            (_plain_run() + r'|[^\n]|\n', Generic.Underline),
+        ],
+        'deleted': [
+            include('inlinecontent'),
+            include('opencode'),
+            (_plain_run() + r'|[^\n]|\n', Generic.Deleted),
+        ],
+        'inserted': [
+            include('inlinecontent'),
+            include('opencode'),
+            (_plain_run() + r'|[^\n]|\n', Generic.Inserted),
+        ],
+
+        # A link's label, brackets included: link text is inline content, so
+        # `[a *b*](u)` holds a strong. A reference link's label stays whole:
+        # whether it resolves is not known here, and the engine renders an
+        # unresolved one, `[*b*][]`, as literal text.
+        'linklabel': [
+            include('inlinecontent'),
+            (_plain_run() + r'|[^\n]|\n', Name.Entity),
+        ],
+
+        # The content of a braced span: the same, except that its own
+        # delimiter is literal there. The engine renders `{*a *b* c*}` as one
+        # strong holding `a *b* c`, and `{=a *b* c=}` as a mark holding a strong.
+        'forcedstrong': [(r'\*', Generic.Strong), include('strong')],
+        'forcedemph': [(r'/', Generic.Emph), include('emph')],
+        'forcedunderline': [(r'_', Generic.Underline), include('underline')],
+        'forceddeleted': [(r'~', Generic.Deleted), include('deleted')],
+        'forcedinserted': [(r'=', Generic.Inserted), include('inserted')],
 
         'lineverbatim': [
             (r'(!)(`+)(?!`)((?:(?!(?<!`)\2(?!`))[^\n])*)((?<!`)\2(?!`)|$)',
@@ -1107,30 +1271,31 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
 
             # CriticMarkup substitution and comment, before the forced family:
             # `{~old~>new~}` also matches the forced-strike shape.
-            (_Scan(r'(\{~)', r'([^\n]*?)(~>)([^\n]*?)(~\})', (r'~>', r'~\}'), masked='bare'),
-             bygroups(Punctuation, Generic.Deleted, Operator, Generic.Inserted, Punctuation)),
+            (_Scan(r'(\{~)', r'([\s\S]*?)(~>)([\s\S]*?)(~\})', (r'~>', r'~\}'), masked='bare', reach='block'),
+             bygroups(Punctuation, using(this, state='deleted'), Operator, using(this, state='inserted'),
+                      Punctuation)),
             (_Scan(r'(\{#)', r'([^\n]*?)(#\})', r'#\}'), bygroups(Punctuation, Comment, Punctuation)),
 
             # The braced FORCED emphasis family. Braces make a delimiter apply
             # where the bare form would not - `my{_path_}name` is underline
             # inside a word - so the content is emphasis and the braces are its
             # delimiters, not an attribute block.
-            (_Scan(r'(\{\*)', r'([^\n]+?)(\*\})', r'\*\}', least=1, masked='braced'), bygroups(Punctuation, Generic.Strong, Punctuation)),
-            (_Scan(r'(\{/)', r'([^\n]+?)(/\})', r'/\}', least=1, masked='braced'), bygroups(Punctuation, Generic.Emph, Punctuation)),
-            (_Scan(r'(\{_)', r'([^\n]+?)(_\})', r'_\}', least=1, masked='braced'), bygroups(Punctuation, Generic.Underline, Punctuation)),
-            (_Scan(r'(\{~)', r'([^\n]+?)(~\})', r'~\}', least=1, masked='braced'), bygroups(Punctuation, Generic.Deleted, Punctuation)),
+            (_Scan(r'(\{\*)', r'([\s\S]+?)(\*\})', r'\*\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='forcedstrong'), Punctuation)),
+            (_Scan(r'(\{/)', r'([\s\S]+?)(/\})', r'/\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='forcedemph'), Punctuation)),
+            (_Scan(r'(\{_)', r'([\s\S]+?)(_\})', r'_\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='forcedunderline'), Punctuation)),
+            (_Scan(r'(\{~)', r'([\s\S]+?)(~\})', r'~\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='forceddeleted'), Punctuation)),
 
             # Braced inline families. Sup and sub are braced-only in Carve: a
             # bare `^x^` or `,x,` is literal text.
-            (_Scan(r'(\{\^)', r'([^\n]+?)(\^\})', r'\^\}', least=1, masked='braced'), bygroups(Punctuation, Generic.Emph, Punctuation)),
-            (_Scan(r'(\{,)', r'([^\n]+?)(,\})', r',\}', least=1, masked='braced'), bygroups(Punctuation, Generic.Emph, Punctuation)),
-            (_Scan(r'(\{=)', r'([^\n]+?)(=\})', r'=\}', least=1, masked='braced'), bygroups(Punctuation, Generic.Inserted, Punctuation)),
-            (_Scan(r'(\{\+)', r'([^\n]+?)(\+\})', r'\+\}', least=1, masked='braced'), bygroups(Punctuation, Generic.Inserted, Punctuation)),
+            (_Scan(r'(\{\^)', r'([\s\S]+?)(\^\})', r'\^\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='emph'), Punctuation)),
+            (_Scan(r'(\{,)', r'([\s\S]+?)(,\})', r',\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='emph'), Punctuation)),
+            (_Scan(r'(\{=)', r'([\s\S]+?)(=\})', r'=\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='forcedinserted'), Punctuation)),
+            (_Scan(r'(\{\+)', r'([\s\S]+?)(\+\})', r'\+\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='inserted'), Punctuation)),
             # The braced en dash. A deletion needs content, so `{--}` is never
             # one, and `{--}x-}` is a dash followed by text, not a deletion.
             (r'\{--\}', Punctuation),
-            (_Scan(r'(\{-)', r'([^\n]+?)(-\})', r'-\}', least=1, masked='braced'), bygroups(Punctuation, Generic.Deleted, Punctuation)),
-            (_Scan(r'(\{%)', r'(.*?)(%\})', r'%\}'), bygroups(Comment.Preproc, Comment, Comment.Preproc)),
+            (_Scan(r'(\{-)', r'([\s\S]+?)(-\})', r'-\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='deleted'), Punctuation)),
+            (_Scan(r'(\{%)', r'([\s\S]*?)(%\})', r'%\}', reach='block'), bygroups(Comment.Preproc, Comment, Comment.Preproc)),
 
             # An inline footnote carries content; a reference carries a label.
             # Each opens only where a `]` lies ahead in its paragraph: an unclosed
@@ -1150,9 +1315,9 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
              bygroups(String.Other, Punctuation, Name.Tag, Punctuation)),
             (_IMAGE_REF, bygroups(String.Other, Name.Label)),
             (_LINK,
-             bygroups(Name.Entity, Punctuation, Name.Tag, Punctuation)),
+             bygroups(using(this, state='linklabel'), Punctuation, Name.Tag, Punctuation)),
             (_LINK_REF, bygroups(Name.Entity, Name.Label)),
-            (_LINK_ATTRS, Name.Entity),
+            (_LINK_ATTRS, using(this, state='linklabel')),
 
             # A cross-reference to a heading id.
             (_CROSS_REFERENCE, bygroups(Punctuation, Name.Namespace, Punctuation)),
@@ -1164,9 +1329,9 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (_Scan(r'(:)([a-zA-Z][\w-]*)(\[)', '', r'\]', reach='paragraph', whole=False),
              bygroups(Punctuation, Name.Function, Punctuation), 'rolebody'),
 
-            # A code callout marker, and a symbol shortcode - whose name may
-            # start with a sign, as in `:+1:`.
-            (r'<\d+>', Name.Constant),
+            # A symbol shortcode, whose name may start with a sign, as in `:+1:`.
+            # A code callout marker is scoped only inside a fence: outside one
+            # the engine renders `<1>` as text.
             (r'(?<![\w:]):[\w+-]+:(?![\w:])', Name.Constant),
 
             # An attribute block attached to the construct before it.
@@ -1205,23 +1370,23 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # OUTER `/`; the inner `*` is part of the two-char token". A space
             # after the opener or before the closer leaves an italic holding
             # literal asterisks: `a /* b */ c` is `<em>* b *</em>`.
-            (_Scan(r'(?<![\w/])(/\*)(?!\s)', r'([^\n]+?)(?<!\s)(\*/)(?![^\W_])',
-                   r'(?<!\s)\*/(?![^\W_])', least=1, masked='bare'),
-             bygroups(Punctuation, Generic.Strong, Punctuation)),
-            (_Scan(r'(?<![\w*])(\*/)', r'([^\n]+?)(/\*)(?![^\W_])', r'/\*(?![^\W_])', least=1, masked='bare'),
-             bygroups(Punctuation, Generic.Strong, Punctuation)),
-            (_Scan(r'(?<![\w*])(\*)(?!\*)', r'(\S(?:[^\n]*?\S)?)(\*)(?![^\W_])',
-                   r'(?<=\S)\*(?![^\W_])', least=1, masked='bare'),
-             bygroups(Punctuation, Generic.Strong, Punctuation)),
-            (_Scan(r'(?<![\w/])(/)(?!/)', r'(\S(?:[^\n]*?\S)?)(/)(?![^\W_])',
-                   r'(?<=\S)/(?![^\W_])', least=1, masked='bare'),
-             bygroups(Punctuation, Generic.Emph, Punctuation)),
-            (_Scan(r'(?<![\w/])(_)(?!_)', r'(\S(?:[^\n]*?\S)?)(_)(?![^\W_])',
-                   r'(?<=\S)_(?![^\W_])', least=1, masked='bare'),
-             bygroups(Punctuation, Generic.Underline, Punctuation)),
-            (_Scan(r'(?<![\w~])(~)(?!~)', r'(\S(?:[^\n]*?\S)?)(~)(?![^\W_])',
-                   r'(?<=\S)~(?![^\W_])', least=1, masked='bare'),
-             bygroups(Punctuation, Generic.Deleted, Punctuation)),
+            (_Scan(r'(?<![\w/])(/\*)(?!\s)', r'([\s\S]+?)(?<!\s)(\*/)(?![^\W_])',
+                   r'(?<!\s)\*/(?![^\W_])', least=1, masked='bare', reach='block'),
+             bygroups(Punctuation, using(this, state='strong'), Punctuation)),
+            (_Scan(r'(?<![\w*])(\*/)', r'([\s\S]+?)(/\*)(?![^\W_])', r'/\*(?![^\W_])', least=1, masked='bare', reach='block'),
+             bygroups(Punctuation, using(this, state='strong'), Punctuation)),
+            (_Scan(r'(?<![\w*])(\*)(?!\*)', r'(\S(?:[\s\S]*?\S)?)(\*)(?![^\W_])',
+                   r'(?<=\S)\*(?![^\W_])', least=1, masked='bare', reach='block'),
+             bygroups(Punctuation, using(this, state='strong'), Punctuation)),
+            (_Scan(r'(?<![\w/])(/)(?!/)', r'(\S(?:[\s\S]*?\S)?)(/)(?![^\W_])',
+                   r'(?<=\S)/(?![^\W_])', least=1, masked='bare', reach='block'),
+             bygroups(Punctuation, using(this, state='emph'), Punctuation)),
+            (_Scan(r'(?<![\w/])(_)(?!_)', r'(\S(?:[\s\S]*?\S)?)(_)(?![^\W_])',
+                   r'(?<=\S)_(?![^\W_])', least=1, masked='bare', reach='block'),
+             bygroups(Punctuation, using(this, state='underline'), Punctuation)),
+            (_Scan(r'(?<![\w~])(~)(?!~)', r'(\S(?:[\s\S]*?\S)?)(~)(?![^\W_])',
+                   r'(?<=\S)~(?![^\W_])', least=1, masked='bare', reach='block'),
+             bygroups(Punctuation, using(this, state='deleted'), Punctuation)),
             # A bare `=` carrying a comparison or an arrow tail on its left is
             # not a highlight delimiter: PART 9's inline precedence excepts "a
             # delimiter that begins a multi-char smart-typography pattern ...
@@ -1233,9 +1398,9 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # `x =y z≤ w`, no mark at all. Nothing is guarded on the RIGHT,
             # also from the engine - `=>` is not an arrow any more, so
             # `a =foo=> b` marks `foo` and `a =>foo= b` marks `>foo`.
-            (_Scan(r'(?<![\w=<>!])(=)(?!=)', r'(\S(?:[^\n]*?\S)?)(?<![<>!])(=)(?![^\W_])',
-                   r'(?<=\S)(?<![<>!])=(?![^\W_])', least=1, masked='bare'),
-             bygroups(Punctuation, Generic.Inserted, Punctuation)),
+            (_Scan(r'(?<![\w=<>!])(=)(?!=)', r'(\S(?:[\s\S]*?\S)?)(?<![<>!])(=)(?![^\W_])',
+                   r'(?<=\S)(?<![<>!])=(?![^\W_])', least=1, masked='bare', reach='block'),
+             bygroups(Punctuation, using(this, state='inserted'), Punctuation)),
 
             # A mention and a tag, each one token: the sigil is part of the name
             # rather than punctuation beside it.

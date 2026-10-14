@@ -49,13 +49,32 @@ the definition markers for footnotes, link references and abbreviations.
 Inline: the emphasis families in Carve's spelling plus their braced forced
 forms, code and inline literals, math, links, images, spans, attributes,
 footnotes and inline footnotes, citations, cross-references, autolinks,
-extensions (`:name[...]`), symbols, code callouts, mentions, tags, escapes,
+extensions (`:name[...]`), symbols, code callouts in a fence, mentions, tags, escapes,
 hard breaks, and smart typography - all nineteen alternatives the spec grammar
 names under `arrow`, `comparison` and `typographic_symbol` plus the dash and
 ellipsis runs, which is the set Prism and highlight.js carry. Two productions of
 `smart_typography` are not scoped and are named as such in
 `tests/test_typography.py`: `smart_quote`, which is per-character contextual
 substitution rather than a run, and the braced en dash `{--}`.
+
+Inside a span the content is lexed too, so `{=a *b* c=}` marks a strong inside
+the highlight, and a link's text holds its own emphasis.
+
+## Fence bodies in their own language
+
+A fence naming a language Pygments knows is highlighted in that language, and a
+raw block's `=FORMAT` names its language the same way (`=html` reads as HTML).
+Code callout markers (`<1>`) and, behind a quote, each line's `>` keep their
+own scope. A language Pygments does not know, or no language, leaves the body
+verbatim. This is the `handlecodeblocks` option of Pygments' Markdown lexer,
+with the same default; pass `handlecodeblocks=False` to read every body
+verbatim:
+
+```python
+from pygments_carve import CarveLexer
+
+lexer = CarveLexer(handlecodeblocks=False)
+```
 
 ## Deliberate limits
 

@@ -39,6 +39,7 @@ from pygments.token import Generic, Punctuation, Text
 from pygments_carve import CarveLexer
 
 import emphasisruns
+from coverage import merged
 from lexerrules import INLINE, build_lexer, lexer_source, state_rules
 
 CORPUS = pathlib.Path(__file__).parent.parent / 'spec' / 'tests' / 'corpus'
@@ -87,7 +88,7 @@ def _emphasized(lexer, source, text):
     """Whether ``text`` lands whole in one emphasis token."""
     marks = (Generic.Strong, Generic.Emph, Generic.Underline,
              Generic.Deleted, Generic.Inserted)
-    return any(ttype in marks and value == text for ttype, value in lexer.get_tokens(source))
+    return any(ttype in marks and value == text for ttype, value in merged(lexer, source))
 
 
 # ----------------------------------------------------------------------------

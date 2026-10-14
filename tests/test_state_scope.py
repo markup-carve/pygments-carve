@@ -21,7 +21,7 @@ from pygments.token import (
 
 from pygments_carve import CarveLexer
 
-from coverage import UNSCOPED
+from coverage import UNSCOPED, merged
 from lexerrules import build_lexer, lexer_source
 
 LEXER = CarveLexer()
@@ -29,7 +29,7 @@ SOURCE = lexer_source()
 
 
 def scoped_run(lexer, sample):
-    return tuple((ttype, value) for ttype, value in lexer.get_tokens(sample)
+    return tuple((ttype, value) for ttype, value in merged(lexer, sample)
                  if ttype not in UNSCOPED)
 
 
@@ -62,12 +62,17 @@ MASKED = [
                     (Punctuation, ')'))),
     ('/a [b/ c](u)', ((Name.Entity, '[b/ c]'), (Punctuation, '('), (Name.Tag, 'u'),
                       (Punctuation, ')'))),
-    ('*a `b*` c*', ((Punctuation, '*'), (Generic.Strong, 'a `b*` c'), (Punctuation, '*'))),
-    ('/see <http://a.b/c> now/', ((Punctuation, '/'), (Generic.Emph, 'see <http://a.b/c> now'),
+    ('*a `b*` c*', ((Punctuation, '*'), (Generic.Strong, 'a '), (Punctuation, '`'),
+                    (String.Backtick, 'b*'), (Punctuation, '`'), (Generic.Strong, ' c'),
+                    (Punctuation, '*'))),
+    ('/see <http://a.b/c> now/', ((Punctuation, '/'), (Generic.Emph, 'see '),
+                                  (Punctuation, '<'), (Name.Tag, 'http://a.b/c'),
+                                  (Punctuation, '>'), (Generic.Emph, ' now'),
                                   (Punctuation, '/'))),
 ] + [
     ('{%sa \\%s} b%s}' % (d, d, d),
-     ((Punctuation, '{' + d), (kind, 'a \\%s} b' % d), (Punctuation, d + '}')))
+     ((Punctuation, '{' + d), (kind, 'a '), (String.Escape, '\\' + d), (kind, '} b'),
+      (Punctuation, d + '}')))
     for d, kind in [('*', Generic.Strong), ('/', Generic.Emph), ('_', Generic.Underline),
                     ('~', Generic.Deleted), ('^', Generic.Emph), (',', Generic.Emph),
                     ('=', Generic.Inserted), ('+', Generic.Inserted), ('-', Generic.Deleted)]
@@ -90,7 +95,7 @@ def test_an_unclosed_code_run_masks_a_bare_closer_but_not_a_braced_one():
     assert scoped_run(LEXER, '*a ` b*') == (
         (Punctuation, '`'), (String.Backtick, ' b*'))
     assert scoped_run(LEXER, 'x{*`a*} here') == (
-        (Punctuation, '{*'), (Generic.Strong, '`a'), (Punctuation, '*}'))
+        (Punctuation, '{*'), (Punctuation, '`'), (String.Backtick, 'a'), (Punctuation, '*}'))
 
 
 # ----------------------------------------------------------------------------
@@ -214,7 +219,7 @@ def test_a_container_fence_needs_its_closer_inside_the_container(sample, expect)
 def test_a_quoted_fence_body_keeps_its_markers():
     """Each body line's `>` is the quote's, and the rest is the payload; a raw
     format is scoped as at document level."""
-    run = scoped_run(LEXER, '> ```=html\n> <b>x</b>\n>\n> ```\n')
+    run = scoped_run(CarveLexer(handlecodeblocks=False), '> ```=html\n> <b>x</b>\n>\n> ```\n')
     assert run[:4] == ((Punctuation, '>'), (Punctuation, '```'), (Keyword.Type, '=html'),
                        (Punctuation, '> '))
     assert ''.join(v for t, v in run if t is String.Backtick) == '<b>x</b>\n\n'
