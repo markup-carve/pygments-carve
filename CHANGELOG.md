@@ -12,6 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and a raw block's `=FORMAT` names its language the same way. Code callout
   markers and a quote's line markers keep their own scope. The
   `handlecodeblocks` option turns it off, as on Pygments' Markdown lexer.
+  (markup-carve/pygments-carve#88)
 
 ### Fixed
 
@@ -47,11 +48,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The content of an emphasis span and an inline link's text are lexed as
   inline content, so `{=a *b* c=}` marks a strong inside the highlight. A
   braced span's own delimiter is literal inside it, as `{*a *b* c*}` renders.
+  (markup-carve/pygments-carve#88)
 - A bare or braced span and a `{%...%}` template span may cross a line of
-  their paragraph.
+  their paragraph. (markup-carve/pygments-carve#88)
 - `::: >` and `::: \` scope their sigil like `::: |`, and `<1>` outside a
-  fence is text, as the engine renders it.
+  fence is text, as the engine renders it. (markup-carve/pygments-carve#88)
 - Paragraph text is emitted as runs rather than one token per character.
+  (markup-carve/pygments-carve#88)
 
 ## [0.1.0] - 2026-10-08
 
