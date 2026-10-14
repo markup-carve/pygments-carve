@@ -157,16 +157,18 @@ def test_the_smallest_repro_is_reproduced_and_the_old_rule_loses_it():
 
 @corpus
 def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
-    """The pass above is only meaningful if this gate can reach forty-five.
+    """The pass above is only meaningful if this gate can reach ninety-five.
 
     Run over the same 2200 documents with the margin outside its group and the
     two Pygments defaults back on - the state this repository was in when the
-    ticket was filed - the gate names 84, and they split cleanly: 81 from the
+    ticket was filed - the gate names 98, and they split cleanly: 95 from the
     rule and 3 from the defaults, with no document in both sets. The rule's
     share moves with the corpus, not with the rules: it was 28 of 31 over 1564
     documents before the bumps that added the comment-fence and
-    description-body sections, and 42 of 45 over 1869; the three the DEFAULTS
-    cost have not moved.
+    description-body sections, 42 of 45 over 1869, and 81 of 84 over 2322. The
+    bump to carve 21879d7 adds fourteen over 2508, all new documents with an
+    indented comment in a list item or note; the three the DEFAULTS cost have
+    not moved.
 
     The ticket counted 32, comparing against the SOURCE rather than against what
     Pygments hands the rules. The 32nd is `250-line-endings-and-a-byte-order-
@@ -181,8 +183,8 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         _regression_source()
         .replace("options.setdefault('stripnl', False)", "options.setdefault('stripnl', True)")
         .replace("options.setdefault('ensurenl', False)", "options.setdefault('ensurenl', True)"))
-    assert count(both) == 84, count(both)
-    assert count(REGRESSION) == 81, count(REGRESSION)
+    assert count(both) == 98, count(both)
+    assert count(REGRESSION) == 95, count(REGRESSION)
     assert count(DEFAULTS) == 3, count(DEFAULTS)
     assert count(LEXER) == 0, count(LEXER)
 
