@@ -823,6 +823,68 @@ def _silent(lexer, match):
     return iter(())
 
 
+_LIST_LINE = re.compile(
+    r'[ \t]*(?:[-*]|' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?[ \t]+[^ \t\n]')
+_HOLDER_LINE = re.compile(r'[ \t]*(?:>(?=[ \t]|$)|::?[ \t]+[^ \t\n])')
+_ROW_LINE = re.compile(
+    r'[ \t]*' + _MARKER_RUN + r'(?:\||\+[ \t])[^\n]*\|(?:' + _ATTRS + r')?[ \t]*$')
+#: How far back a lone `+` looks for its container; bounds a run of them.
+_LOOKBACK = 200
+
+
+def _line_above(text, start):
+    """The line ending just before offset `start`, or None at the first line."""
+    if start == 0:
+        return None
+    return text[text.rfind('\n', 0, start - 1) + 1:start - 1]
+
+
+def _plus_attaches(text, start):
+    """Does a lone `+` at `start` attach to an open list item, quote or description?
+
+    A list item stays open across blank lines; a quote or a description does
+    not, and any other block at the left margin closes all three.
+    """
+    blank = False
+    end = start
+    for _ in range(_LOOKBACK):
+        line = _line_above(text, end)
+        if line is None:
+            return False
+        end -= len(line) + 1
+        if not line.strip():
+            blank = True
+        elif line.strip() == '+':
+            continue
+        elif _LIST_LINE.match(line):
+            return True
+        elif _HOLDER_LINE.match(line):
+            return not blank
+        elif line[0] not in ' \t' and (blank or not line[0].isalnum()):
+            return False
+    return False
+
+
+def _continuation_marker(lexer, match):
+    margin, plus, rest = match.group(1, 2, 3)
+    yield match.start(1), Text, margin
+    attaches = _plus_attaches(match.string, match.start())
+    yield match.start(2), Punctuation if attaches else Text, plus
+    yield match.start(3), Text, rest
+
+
+def _continuation_row(lexer, match):
+    """A `+ ... |` line is a row only directly under a table row."""
+    margin, plus, rest = match.group(1, 2, 3)
+    above = _line_above(match.string, match.start())
+    is_row = above is not None and _ROW_LINE.match(above) is not None
+    yield match.start(1), Text, margin
+    yield match.start(2), Punctuation if is_row else Text, plus
+    stack = ('root', 'tablerow') if is_row else ('root', 'paragraph')
+    for index, token, value in lexer.get_tokens_unprocessed(rest, stack):
+        yield match.start(3) + index, token, value
+
+
 class _ScanMeta(RegexLexerMeta):
     """Compiles a `_Scan` rule to its matcher and every other rule as Pygments does."""
 
@@ -1115,8 +1177,8 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'^(' + _MARGIN + r')((?:[-*] +)*[-*](?:' + _ATTRS + r')?)(?= +[ \t]*[^ \t\n])'
              + _NESTED_TAIL,
              bygroups(Text, Punctuation, Text, using(this, state='root'))),
-            # A lone `+` is a `continuation_marker`, attaching the next block.
-            (r'^(' + _MARGIN + r')(\+)([ \t]*)$', bygroups(Text, Punctuation, Text)),
+            # A lone `+` is a `continuation_marker` only under an open container.
+            (r'^(' + _MARGIN + r')(\+)([ \t]*)$', _continuation_marker),
 
             # Ordered markers: numeric, alphabetic, roman, and the bare `.` that
             # continues the enclosing sequence. Any of them may carry glued
@@ -1130,7 +1192,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # Tables. The header marker, the alignment run and the separator row
             # are their own tokens; cell content is lexed inline.
             # A `continuation_row` ends in `|`; without one the line is prose.
-            (r'^(' + _MARGIN + r')(\+)(?=[^\n]*\|[ \t]*$)', bygroups(Text, Punctuation), 'tablerow'),
+            (r'^(' + _MARGIN + r')(\+)(?=[^\n]*\|[ \t]*$)([^\n]*)', _continuation_row),
             # A row ends in `|`, or in `|` and a glued row attribute block:
             # `| a | b` with no closing pipe is a paragraph.
             (r'^(' + _MARGIN + r')(\|=[<>^v~]*)(?=' + _ROW_END + r')',
