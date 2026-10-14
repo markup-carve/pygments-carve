@@ -36,7 +36,7 @@ from coverage import load_constructs, payload_of, scope_of
 
 #: construct name -> why this lexer does not scope its payload.
 #:
-#: One entry, where the shared inventory and the engine disagree and this lexer
+#: Two entries, where the shared inventory and the engine disagree and this lexer
 #: follows the engine. Every other construct in the inventory carries a scope.
 #: The mechanism is kept because the inventory grows: a construct added upstream
 #: shows up here as a failure, and the choice is then to lex it or to write down
@@ -46,6 +46,10 @@ NOT_COVERED = {
                     '(`<1> explains the line` is `<p>&lt;1&gt; explains the line</p>` '
                     'in carve 0.1.11), so scoping it was an over-color; the marker '
                     'inside a fence is `callout marker in fence`, and still scoped',
+    'table continuation row': 'the shared sample `+ cont cell |` has no table row '
+                              'above it, and carve 0.1.11 renders it as the paragraph '
+                              '`<p>+ cont cell |</p>`; under a row it is scoped, which '
+                              '`test_block_rules.py` pins',
 }
 
 LEXER = CarveLexer()

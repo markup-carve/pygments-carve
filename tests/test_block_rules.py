@@ -205,14 +205,17 @@ PINS = [
         [(Punctuation, '-'), (Name.Constant, '[x]')]),
     Pin('bullet', '- item\n',
         [(Punctuation, '-')]),
-    Pin('continuation marker', '+\n',
-        [(Punctuation, '+')]),
+    Pin('continuation marker', '- a\n+\n',
+        [(Punctuation, '-'), (Punctuation, '+')],
+        note='Only under an open container: a lone `+` at the start of a '
+             'document, or under a table or heading, is text to the engine.'),
     Pin('ordered marker', '1. item\n',
         [(Number.Integer, '1.')]),
     Pin('bare ordinal', '. item\n',
         [(Number.Integer, '.')]),
-    Pin('table continuation row', '+ a |\n',
-        [(Punctuation, '+'), (Punctuation, '|')]),
+    Pin('table continuation row', '| x |\n+ a |\n',
+        [(Punctuation, '|'), (Punctuation, '|'), (Punctuation, '+'), (Punctuation, '|')],
+        note='Only directly under a row: `+ a |` anywhere else is a paragraph.'),
     Pin('table header row', '|= a | b |\n',
         [(Operator, '|='), (Punctuation, '|'), (Punctuation, '|')]),
     Pin('table row', '| a | b |\n',
@@ -523,13 +526,15 @@ GUARDS = [
     Guard('a bullet needs content', 22, r'(?= +[ \t]*[^ \t\n])', 0,
           '- \n', [], [(Punctuation, '-')]),
     Guard('a continuation marker is alone on its line', 23, '$', 0,
-          '+ foo\n', [], [(Punctuation, '+')]),
+          '- a\n+ foo\n', [(Punctuation, '-')],
+          [(Punctuation, '-'), (Punctuation, '+')]),
     Guard('an ordered marker needs content', 24, r'(?= +[ \t]*[^ \t\n])', 0,
           '1. \n', [], [(Number.Integer, '1.')]),
     Guard('a bare ordinal needs content', 25, r'(?= +[ \t]*[^ \t\n])', 0,
           '. \n', [], [(Number.Integer, '.')]),
     Guard('a continuation row ends in a pipe', 26, r'(?=[^\n]*\|[ \t]*$)', 0,
-          '+ foo\n', [], [(Punctuation, '+')]),
+          '| x |\n+ foo\n', [(Punctuation, '|'), (Punctuation, '|')],
+          [(Punctuation, '|'), (Punctuation, '|'), (Punctuation, '+')]),
     Guard('a header row ends in a pipe', 27, "(?=' + _ROW_END + r')", 0,
           '|= a | b\n', [], [(Operator, '|='), (Punctuation, '|')]),
     Guard('a row ends in a pipe', 28, "(?=' + _ROW_END + r')", 0,
@@ -771,3 +776,41 @@ def test_the_corpus_notices_a_deleted_deflist_rule(index):
     assert changed, (
         'deleting deflist rule %d (%r) changes no corpus document.'
         % (index, DEFLIST_PINS[index].name))
+
+
+#: Where a `+` line is markup, as carve 0.1.11 renders each shape: True when no
+#: `+` survives into the output. A regex cannot see the line above, so these pin
+#: the lookback the two `+` rules do in their callbacks.
+PLUS_CONTEXTS = [
+    ('- item\n+\n```\nx\n```\n', True),
+    ('- item\n\n+\n```\nx\n```\n', True),
+    ('- a\n\n  para\n\n+\n```\nx\n```\n', True),
+    ('- a\nlazy\n+\n```\nx\n```\n', True),
+    ('- a\n+\n+\n```\nx\n```\n', True),
+    ('> q\n+\n```\nx\n```\n', True),
+    (':: t\n: d\n+\n```\nx\n```\n', True),
+    ('+\n```\nx\n```\n', False),
+    ('para\n\n+\n\nnext\n', False),
+    ('| a |\n+\n```\nx\n```\n', False),
+    ('# H\n+\n```\nx\n```\n', False),
+    ('> q\n\n+\n```\nx\n```\n', False),
+    (':: t\n: d\n\n+\n```\nx\n```\n', False),
+    ('- a\n\npara\n\n+\n```\nx\n```\n', False),
+    ('- a\n```\nx\n```\n+\n```\ny\n```\n', False),
+    ('| a | b |\n+ x | y |\n', True),
+    ('| a |{.r}\n+ b |\n+ c |\n', True),
+    ('|= a |\n+ b |\n', True),
+    ('- | a | b |\n  + x | y |\n', True),
+    ('+ x | y |\n', False),
+    ('| a | b |\n\n+ x | y |\n', False),
+    ('# H |\n+ b |\n', False),
+    ('+ x |\n+ y |\n', False),
+    ('- a\n' + '  line\n' * 300 + '+\n```\nx\n```\n', True),
+]
+
+
+@pytest.mark.parametrize('sample, markup', PLUS_CONTEXTS)
+def test_a_plus_line_is_markup_only_where_the_engine_reads_it(sample, markup):
+    tokens = [t for t, v in LEXER.get_tokens(sample) if v == '+']
+    assert tokens
+    assert all(t is (Punctuation if markup else Text) for t in tokens), tokens
