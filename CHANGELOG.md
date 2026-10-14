@@ -64,6 +64,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A lone `+` or a `+ a |` line under a definition term is the term's text,
   as the engine renders it, not a continuation marker or row.
   (markup-carve/pygments-carve#90)
+- A lone `+` is a continuation marker only under an open list item, quote or
+  description, and a `+ a |` line is a row only directly under a table row.
+  At the start of a document, under a table or heading, or after a paragraph
+  both are text, as the engine renders them. (markup-carve/pygments-carve#92)
 
 ## [0.1.0] - 2026-10-08
 
