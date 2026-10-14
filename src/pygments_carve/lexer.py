@@ -291,7 +291,9 @@ def _closers(text, rex, masked=False):
     """``(starts, ends)`` of every match of ``rex`` in ``text``, overlaps included.
 
     ``masked`` drops a match that starts inside an escape, a code span, a link
-    or an autolink: `_masks` says why. It is ``'bare'`` or ``'braced'``.
+    or an autolink: `_masks` says why. ``'braced'`` keeps a match after an
+    unclosed backtick run, ``'critic'`` does not, and ``'bare'`` also drops a
+    match inside a braced span (`_braced_pairs`).
     """
     found = _indexes(text)
     key = (rex, masked)
@@ -299,8 +301,10 @@ def _closers(text, rex, masked=False):
     if hit is None:
         starts, ends = [], []
         if masked:
-            mask_starts, mask_ends = _masks(text, masked == 'bare')
-            spans = zip(mask_starts, mask_ends)
+            if masked == 'bare':
+                spans = iter(_bare_masks(text))
+            else:
+                spans = zip(*_masks(text, masked == 'critic'))
             current = next(spans, None)
         for m in rex.finditer(text):
             at = m.start()
@@ -613,6 +617,135 @@ def _masks(text, unclosed):
                 reach = span[1]
         hit = found[key] = (starts, ends)
     return hit
+
+
+#: A braced opener, and the closer of each kind.
+_BRACED_OPENER = re.compile(r'\{([*/_~^,=+-])')
+_BRACED_CLOSER = re.compile(r'([*/_~^,=+-])\}')
+
+
+def _braced_pairs(text):
+    """``{opener offset: span end}`` for every braced span in ``text``.
+
+    A braced span nests, its own kind too: the engine renders `{*a {*b*} c*}`
+    as a strong inside a strong, `{*a {*b*}` as a literal `{*a` and a strong,
+    and `{*a {/b*} c/}` as a literal `{*a` and an italic holding `b*} c`. That
+    is the reading of pairing the openers from the LAST one back: each takes
+    the first closer of its kind that no span already paired to its right
+    holds, and its own span then holds every closer inside it. A closer inside
+    an escape, a code span or a link is no closer (`_masks`), and a span ends
+    in its block. Each closer is skipped at most once, so this is linear.
+    """
+    found = _indexes(text)
+    hit = found.get('braced')
+    if hit is not None:
+        return hit
+    mask_starts, mask_ends = _masks(text, False)
+    notes = _comment_spans(text)
+    note_starts = [start for start, _ in notes]
+
+    def masked(at):
+        i = bisect.bisect_right(mask_starts, at) - 1
+        if i >= 0 and at < mask_ends[i]:
+            return True
+        i = bisect.bisect_right(note_starts, at) - 1
+        return i >= 0 and at < notes[i][1]
+
+    closers = {}
+    for m in _BRACED_CLOSER.finditer(text):
+        if not masked(m.start()):
+            closers.setdefault(m.group(1), []).append(m.start())
+    # `skip[kind][i]` points past closers that are used or held by a span.
+    skip = {kind: list(range(len(at) + 1)) for kind, at in closers.items()}
+
+    def free(kind, i):
+        nxt = skip[kind]
+        root = i
+        while nxt[root] != root:
+            root = nxt[root]
+        while nxt[i] != root:
+            nxt[i], i = root, nxt[i]
+        return root
+
+    pairs = {}
+    openers = [m for m in _BRACED_OPENER.finditer(text) if not masked(m.start())]
+    for m in reversed(openers):
+        kind, at = m.group(1), m.start()
+        positions = closers.get(kind)
+        if not positions:
+            continue
+        i = free(kind, bisect.bisect_left(positions, at + 3))
+        if i == len(positions) or positions[i] >= _block_end(text, at):
+            continue
+        close = positions[i]
+        pairs[at] = close + 2
+        for other, places in closers.items():
+            j = free(other, bisect.bisect_right(places, at))
+            while j < len(places) and places[j] <= close:
+                skip[other][j] = j + 1
+                j = free(other, j + 1)
+    found['braced'] = pairs
+    return pairs
+
+
+def _comment_spans(text):
+    """``[(start, end)]`` of the comments a braced delimiter inside is not
+    one: `{#...#}` and `{%...%}`, and a trailing `%%` comment to its line end.
+    The engine renders `{*a {# {* x #} b*}` as one strong holding the comment.
+    The braced en dash `{--}` is here too: it is one token, neither an opener
+    nor a closer.
+    """
+    mask_starts, mask_ends = _masks(text, False)
+    spans, reach = [], 0
+    for m in re.finditer(r'\{--\}|\{#|\{%|%%', text):
+        at = m.start()
+        if at < reach:
+            continue
+        i = bisect.bisect_right(mask_starts, at) - 1
+        if i >= 0 and at < mask_ends[i]:
+            continue  # escaped, or inside a code span: no comment opens here
+        if m.group() == '{--}':
+            end = m.end()
+        elif m.group() == '%%':
+            end = _line_end(text, at)
+        else:
+            close = '#}' if m.group() == '{#' else '%}'
+            limit = _line_end(text, at) if close == '#}' else _block_end(text, at)
+            starts = _positions(text, close, re.escape(close))
+            i = bisect.bisect_left(starts, at + 2)
+            if i == len(starts) or starts[i] >= limit:
+                continue
+            end = starts[i] + 2
+        spans.append((at, end))
+        reach = end
+    return spans
+
+
+def _bare_masks(text):
+    """The masks of a bare closer: `_masks`, and every braced span, which a
+    bare span cannot close inside (`*a {=b*=} c*` is one strong)."""
+    found = _indexes(text)
+    hit = found.get('baremask')
+    if hit is None:
+        spans = list(zip(*_masks(text, True)))
+        spans += _braced_pairs(text).items()
+        hit = found['baremask'] = sorted(spans)
+    return hit
+
+
+class _BracedScan(_ScanMatcher):
+    """A braced span, its closer looked up in `_braced_pairs`."""
+
+    def end(self, text, opened):
+        return _braced_pairs(text).get(opened.start())
+
+
+class _Braced(_Scan):
+    def __init__(self, opener, rest):
+        super().__init__(opener, rest, ())
+
+    def matcher(self, flags):
+        return _BracedScan(self, flags)
 
 
 #: A fence body read verbatim, and one behind a quote marker. Each is also the
@@ -1271,7 +1404,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
 
             # CriticMarkup substitution and comment, before the forced family:
             # `{~old~>new~}` also matches the forced-strike shape.
-            (_Scan(r'(\{~)', r'([\s\S]*?)(~>)([\s\S]*?)(~\})', (r'~>', r'~\}'), masked='bare', reach='block'),
+            (_Scan(r'(\{~)', r'([\s\S]*?)(~>)([\s\S]*?)(~\})', (r'~>', r'~\}'), masked='critic', reach='block'),
              bygroups(Punctuation, using(this, state='deleted'), Operator, using(this, state='inserted'),
                       Punctuation)),
             (_Scan(r'(\{#)', r'([^\n]*?)(#\})', r'#\}'), bygroups(Punctuation, Comment, Punctuation)),
@@ -1280,21 +1413,21 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # where the bare form would not - `my{_path_}name` is underline
             # inside a word - so the content is emphasis and the braces are its
             # delimiters, not an attribute block.
-            (_Scan(r'(\{\*)', r'([\s\S]+?)(\*\})', r'\*\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='forcedstrong'), Punctuation)),
-            (_Scan(r'(\{/)', r'([\s\S]+?)(/\})', r'/\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='forcedemph'), Punctuation)),
-            (_Scan(r'(\{_)', r'([\s\S]+?)(_\})', r'_\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='forcedunderline'), Punctuation)),
-            (_Scan(r'(\{~)', r'([\s\S]+?)(~\})', r'~\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='forceddeleted'), Punctuation)),
+            (_Braced(r'(\{\*)', r'([\s\S]+?)(\*\})'), bygroups(Punctuation, using(this, state='forcedstrong'), Punctuation)),
+            (_Braced(r'(\{/)', r'([\s\S]+?)(/\})'), bygroups(Punctuation, using(this, state='forcedemph'), Punctuation)),
+            (_Braced(r'(\{_)', r'([\s\S]+?)(_\})'), bygroups(Punctuation, using(this, state='forcedunderline'), Punctuation)),
+            (_Braced(r'(\{~)', r'([\s\S]+?)(~\})'), bygroups(Punctuation, using(this, state='forceddeleted'), Punctuation)),
 
             # Braced inline families. Sup and sub are braced-only in Carve: a
             # bare `^x^` or `,x,` is literal text.
-            (_Scan(r'(\{\^)', r'([\s\S]+?)(\^\})', r'\^\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='emph'), Punctuation)),
-            (_Scan(r'(\{,)', r'([\s\S]+?)(,\})', r',\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='emph'), Punctuation)),
-            (_Scan(r'(\{=)', r'([\s\S]+?)(=\})', r'=\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='forcedinserted'), Punctuation)),
-            (_Scan(r'(\{\+)', r'([\s\S]+?)(\+\})', r'\+\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='inserted'), Punctuation)),
+            (_Braced(r'(\{\^)', r'([\s\S]+?)(\^\})'), bygroups(Punctuation, using(this, state='emph'), Punctuation)),
+            (_Braced(r'(\{,)', r'([\s\S]+?)(,\})'), bygroups(Punctuation, using(this, state='emph'), Punctuation)),
+            (_Braced(r'(\{=)', r'([\s\S]+?)(=\})'), bygroups(Punctuation, using(this, state='forcedinserted'), Punctuation)),
+            (_Braced(r'(\{\+)', r'([\s\S]+?)(\+\})'), bygroups(Punctuation, using(this, state='inserted'), Punctuation)),
             # The braced en dash. A deletion needs content, so `{--}` is never
             # one, and `{--}x-}` is a dash followed by text, not a deletion.
             (r'\{--\}', Punctuation),
-            (_Scan(r'(\{-)', r'([\s\S]+?)(-\})', r'-\}', least=1, masked='braced', reach='block'), bygroups(Punctuation, using(this, state='deleted'), Punctuation)),
+            (_Braced(r'(\{-)', r'([\s\S]+?)(-\})'), bygroups(Punctuation, using(this, state='deleted'), Punctuation)),
             (_Scan(r'(\{%)', r'([\s\S]*?)(%\})', r'%\}', reach='block'), bygroups(Comment.Preproc, Comment, Comment.Preproc)),
 
             # An inline footnote carries content; a reference carries a label.

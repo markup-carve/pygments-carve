@@ -9,6 +9,7 @@ holding, so none of them passes for a reason other than the one stated.
 import pytest
 
 from pygments.token import (
+    Comment,
     Generic,
     Keyword,
     Literal,
@@ -85,8 +86,7 @@ def test_a_closer_inside_a_tighter_construct_does_not_close(sample, expect):
 
 
 def test_the_masks_are_what_refuse_those_closers():
-    _sharp(_mutant(("masked='bare'", 'masked=False'), ("masked='braced'", 'masked=False')),
-           MASKED)
+    _sharp(_mutant(('span = _tight(text, m.start(), unclosed)', 'span = None')), MASKED)
 
 
 def test_an_unclosed_code_run_masks_a_bare_closer_but_not_a_braced_one():
@@ -235,3 +235,62 @@ def test_a_row_attribute_block_may_follow_the_closing_pipe():
     assert scoped_run(LEXER, '| a |{.c}\n') == (
         (Punctuation, '|'), (Punctuation, '|'), (Name.Attribute, '{.c}'))
     assert scoped_run(LEXER, '| a | b\n') == ()
+
+
+# ----------------------------------------------------------------------------
+# Braced spans nest, and a bare closer inside one closes nothing
+# ----------------------------------------------------------------------------
+
+#: Engine readings (carve 0.1.11): a braced span nests its own kind, an
+#: unpaired outer opener stays literal, a closer inside a later span is that
+#: span's, and a bare closer inside a braced span does not close a bare span.
+NESTED = [
+    ('{*a {*b*} c*}', ((Punctuation, '{*'), (Generic.Strong, 'a '), (Punctuation, '{*'),
+                       (Generic.Strong, 'b'), (Punctuation, '*}'), (Generic.Strong, ' c'),
+                       (Punctuation, '*}'))),
+    ('{=a {=b=} c=}', ((Punctuation, '{='), (Generic.Inserted, 'a '), (Punctuation, '{='),
+                       (Generic.Inserted, 'b'), (Punctuation, '=}'), (Generic.Inserted, ' c'),
+                       (Punctuation, '=}'))),
+    ('{*a {*b*}', ((Punctuation, '{*'), (Generic.Strong, 'b'), (Punctuation, '*}'))),
+    ('{*a {*b c*}', ((Punctuation, '{*'), (Generic.Strong, 'b c'), (Punctuation, '*}'))),
+    ('{*a {/b*} c/}', ((Punctuation, '{/'), (Generic.Emph, 'b*} c'), (Punctuation, '/}'))),
+    ('{*a {/b c*}', ((Punctuation, '{*'), (Generic.Strong, 'a {/b c'), (Punctuation, '*}'))),
+    ('{*a {# {* x #} b*}', ((Punctuation, '{*'), (Generic.Strong, 'a '), (Punctuation, '{#'),
+                            (Comment, ' {* x '), (Punctuation, '#}'), (Generic.Strong, ' b'),
+                            (Punctuation, '*}'))),
+]
+
+BARE_IN_BRACED = [
+    ('*a {=b*=} c*', ((Punctuation, '*'), (Generic.Strong, 'a '), (Punctuation, '{='),
+                      (Generic.Inserted, 'b*'), (Punctuation, '=}'), (Generic.Strong, ' c'),
+                      (Punctuation, '*'))),
+    ('*a {=b*=}', ((Punctuation, '{='), (Generic.Inserted, 'b*'), (Punctuation, '=}'))),
+]
+
+
+@pytest.mark.parametrize('sample,expect', NESTED + BARE_IN_BRACED,
+                         ids=[n[0] for n in NESTED + BARE_IN_BRACED])
+def test_a_braced_span_nests_and_holds_its_closers(sample, expect):
+    assert scoped_run(LEXER, sample) == expect
+
+
+def test_an_escaped_comment_opener_hides_no_braced_span():
+    assert (Punctuation, '{*') in scoped_run(LEXER, '\\{# {*x*} #}')
+
+
+def test_a_braced_en_dash_opens_no_span():
+    """`{--}` is one token: a later `-}` does not pair with it, so it hides no
+    bare closer (the engine closes the strong at `b*`)."""
+    sample = '*a {--} b* c-} d*'
+    expect = ((Punctuation, '*'), (Generic.Strong, 'a '), (Punctuation, '{--}'),
+              (Generic.Strong, ' b'), (Punctuation, '*'))
+    assert scoped_run(LEXER, sample) == expect
+    _sharp(_mutant(("r'\\{--\\}|\\{#|\\{%|%%'", "r'\\{#|\\{%|%%'")), [(sample, expect)])
+
+
+def test_pairing_from_the_last_opener_is_what_nests_them():
+    _sharp(_mutant(('    for m in reversed(openers):', '    for m in openers:')), NESTED[:3])
+
+
+def test_the_braced_masks_are_what_hold_a_bare_closer():
+    _sharp(_mutant(('        spans += _braced_pairs(text).items()\n', '')), BARE_IN_BRACED)
