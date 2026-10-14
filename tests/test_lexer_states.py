@@ -48,6 +48,14 @@ USING_STATES = {
     # `test_the_multi_line_using_state_survives_a_newline` asserts rather than
     # exempting.
     'fencebody': 'spans lines, and is asserted to match a newline below',
+    # A fence body behind a quote marker, which spans lines like `fencebody`
+    # and matches a newline the same way.
+    'quotedfencebody': 'spans lines, and its last rule takes a newline',
+    # The language slot of a container fence: one word of an opener line.
+    'fencelang': 'its group is a single line by construction',
+    # The rest of a container's marker line, read as a block of its own
+    # (`- # H`): `_NESTED_TAIL` takes it up to the line end only.
+    'root': 'its group is a single line by construction',
 }
 
 

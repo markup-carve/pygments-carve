@@ -75,6 +75,20 @@ SHAPES = {
     'include opener': '{{ a ',
     'include path': '{{ ch-1.crv#intro',
     'include unpadded': '{{ a}}',
+    # A closer behind an escape, a code span or a link is masked, and the masks
+    # are found once per document like the closers.
+    'escaped closer': '*a \\* ',
+    'code before an opener': '`a` *b ',
+    'link before an opener': '[a](u) *b ',
+}
+
+#: Shapes repeated line after line: openers whose search crosses lines.
+MULTILINE = {
+    'quoted fence opener': '> ```\n',
+    'item fence opener': '- ```\n',
+    'paragraph of markers': 'a\n- b\n',
+    'unclosed code per line': 'a `b\n',
+    'unclosed inline note per line': 'a ^[b\n',
 }
 
 #: Block lines whose content is lexed by a state of its own rather than `inline`.
@@ -146,6 +160,14 @@ def test_the_shape_is_linear(name):
         % (name, SHAPES[name], ratio, ATTEMPTS))
 
 
+@pytest.mark.parametrize('name', sorted(MULTILINE))
+def test_the_shape_is_linear_over_lines(name):
+    ratio = growth(LEXER, MULTILINE[name])
+    assert ratio <= LIMIT, (
+        '%s: quadrupling %r line after line multiplied the time by %.1f.'
+        % (name, MULTILINE[name], ratio))
+
+
 @pytest.mark.parametrize('name', sorted(LINES))
 @pytest.mark.parametrize('unit', ['*a ', '[a]('], ids=repr)
 def test_the_shape_is_linear_in_a_block_line(name, unit):
@@ -162,11 +184,11 @@ _OLD = [
     ('a bare closer scanned for, not looked up',
      r"""(r'(?<![\w*])(\*)(?!\*)(\S(?:[^\n]*?\S)?)(\*)(?![^\W_])',""",
      """(_Scan(r'(?<![\\w*])(\\*)(?!\\*)', r'(\\S(?:[^\\n]*?\\S)?)(\\*)(?![^\\W_])',
-                   r'(?<=\\S)\\*(?![^\\W_])', least=1),""",
+                   r'(?<=\\S)\\*(?![^\\W_])', least=1, masked='bare'),""",
      '*a '),
     ('the CriticMarkup substitution, scanned twice',
      r"""(r'(\{~)([^\n]*?)(~>)([^\n]*?)(~\})',""",
-     r"""(_Scan(r'(\{~)', r'([^\n]*?)(~>)([^\n]*?)(~\})', (r'~>', r'~\}')),""",
+     r"""(_Scan(r'(\{~)', r'([^\n]*?)(~>)([^\n]*?)(~\})', (r'~>', r'~\}'), masked='bare'),""",
      '{~a ~>'),
     ('an include part separator that could be empty',
      r"""(r'(\{\{)([ \t]+)((?:"(?:\\.|[^"\\])*"|[^#@}\s"][^#@}\s]*))((?:#[A-Za-z0-9_][A-Za-z0-9_-]*)?(?:[ \t]*[^\s}]+)*)([ \t]+)(\}\})',""",
