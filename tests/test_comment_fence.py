@@ -235,7 +235,7 @@ def test_that_reading_is_the_block_rule_and_not_the_inline_one():
 
 @corpus
 def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
-    """The zero above is only meaningful if this reader can reach thirty-four.
+    """The zero above is only meaningful if this reader can reach thirty-six.
 
     Run over the same 2200 documents, the #30 rule shape buries content the
     corpus renders in exactly these - the six the ticket found plus two older
@@ -244,8 +244,10 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     bumps. Those are the comment-fence rulings the spec has made since:
     sections 445 and 446 for the degraded fence, 449 for a comment below a
     description body's column, and 504, 508, 512 and 515 for a comment span
-    whose closer sits below its host's column. None of them is a rule change
-    here - the current lexer buries nothing in any of them.
+    whose closer sits below its host's column. The bump to carve 21879d7 adds
+    two new documents, 556 and 583, each an indented comment inside a list
+    item. None of them is a rule change here - the current lexer buries
+    nothing in any of them.
     """
     hits = []
     for path in DOCUMENTS:
@@ -316,6 +318,9 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
         '515-a-nested-marker-comment-keeps-its-own-ownership-4.crv',
         '515-a-nested-marker-comment-keeps-its-own-ownership-5.crv',
         '515-a-nested-marker-comment-keeps-its-own-ownership.crv',
+        '556-a-closed-block-leaves-no-frame-for-the-line-below-14.crv',
+        '583-a-comment-between-a-heading-and-a-colon-fence-leaves-the-fence-a'
+        'n-opener.crv',
     ]), hits
 
 
