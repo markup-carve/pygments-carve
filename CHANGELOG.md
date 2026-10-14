@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Lexing stays linear on long lines. An include directive with no closer
+  (`{{ chapter-one.crv#introduction` took 166s), an attribute block holding an
+  unclosed run of quotes, and the CriticMarkup substitution were exponential or
+  cubic; every bare and braced emphasis opener, code span, link destination,
+  footnote reference, citation and autolink with no closer was quadratic.
+- A bare emphasis run closes at its first guarded closer. A one-character
+  content was tried last, so `(/x/) and a./b/` read as one span and
+  `a =f=>g= b` marked `f=>g`; both now read as the engine does.
+- An attribute block holding a bare quote is no longer scoped: the engine
+  renders `[x]{key=a"b}` as text, and a quoted value on a standalone attribute
+  line no longer runs onto the next line.
+
 ## [0.1.0] - 2026-10-08
 
 ### Added

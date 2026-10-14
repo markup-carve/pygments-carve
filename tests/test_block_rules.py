@@ -441,7 +441,7 @@ GUARDS = [
            (Comment.Preproc, '%%%'), (Comment, '%')]),
     Guard('a raw fence skips a byte order mark only at offset 0', 3, r'\A', 0,
           'p\n\n\ufeff```=html\nx\n```\n',
-          [(Punctuation, '`'), (Punctuation, '`'), (Punctuation, '```')],
+          [(Punctuation, '```')],
           [(Punctuation, '```'), (Keyword.Type, '=html'),
            (String.Backtick, 'x\n'), (Punctuation, '```')]),
     Guard('a raw block takes no title', 3, r"(?= ?=[a-zA-Z][\w+.-]*[ \t]*$)", 0,
@@ -457,7 +457,7 @@ GUARDS = [
            (String.Backtick, 'x\n'), (Punctuation, '```')]),
     Guard('a code fence skips a byte order mark only at offset 0', 4, r'\A', 0,
           'p\n\n\ufeff```\nx\n```\n',
-          [(Punctuation, '`'), (Punctuation, '`'), (Punctuation, '```')],
+          [(Punctuation, '```')],
           [(Punctuation, '```'), (String.Backtick, 'x\n'), (Punctuation, '```')]),
     Guard('an info string outside the three shapes opens no block', 4,
           r"(?= ?(?:' + _FENCE_INFO + r')?[ \t]*$)", 0,
@@ -601,25 +601,28 @@ def test_the_blank_line_guard_is_what_keeps_the_fence_search_cheap():
 
     The assertion is the RATIO across a fixed pair of sizes, not a stopwatch
     reading: absolute times on a machine carrying other load measure the load.
-    Measured here, eight more blank lines cost the guarded lexer 1.5x and the
-    unguarded one 180x.
+    The guarded lexer is measured on 2000 and 4000 lines, best of five: at 12
+    and 20 lines it took microseconds, which is timer noise, and the pin failed
+    on a loaded machine with nothing wrong. Doubling must stay under x3, the
+    linear threshold the fence closer search uses; an exponential search does
+    not finish 2000 lines at all. The unguarded lexer is measured where it can
+    still finish: eight more blank lines cost it 180x.
     """
     unguarded = build_lexer(without_clause(SOURCE, 1, r'(?!\2)', 0, BLOCK))
 
     def blanks(n):
         return '%%%\n' + ' \n' * n
 
-    def ratio(lexer):
-        small = _elapsed(lexer, blanks(12))
-        large = _elapsed(lexer, blanks(20))
-        return large / max(small, 1e-9)
+    def ratio(lexer, small, large, repeats):
+        return (_elapsed(lexer, blanks(large), repeats)
+                / max(_elapsed(lexer, blanks(small), repeats), 1e-9))
 
-    guarded_ratio = ratio(LEXER)
+    guarded_ratio = ratio(LEXER, 2000, 4000, 5)
     assert guarded_ratio < 3, (
-        'eight more whitespace-only lines under an unclosed comment fence '
+        'doubling the whitespace-only lines under an unclosed comment fence '
         'multiplied the time by %.2f, which is the growth the guard exists to '
         'stop.' % guarded_ratio)
-    unguarded_ratio = ratio(unguarded)
+    unguarded_ratio = ratio(unguarded, 12, 20, 3)
     assert unguarded_ratio > 8, (
         'without the guard the same eight lines are expected to be far more '
         'than eight times the work (measured 180x); they were %.2fx, so this '
