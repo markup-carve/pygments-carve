@@ -6,6 +6,60 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- A fence naming a language Pygments knows is highlighted in that language,
+  and a raw block's `=FORMAT` names its language the same way. Code callout
+  markers and a quote's line markers keep their own scope. The
+  `handlecodeblocks` option turns it off, as on Pygments' Markdown lexer.
+  (markup-carve/pygments-carve#88)
+
+### Fixed
+
+- Lexing stays linear on long lines. An include directive with no closer
+  (`{{ chapter-one.crv#introduction` took 166s), an attribute block holding an
+  unclosed run of quotes, and the CriticMarkup substitution were exponential or
+  cubic; every bare and braced emphasis opener, code span, link destination,
+  footnote reference, citation and autolink with no closer was quadratic.
+  (markup-carve/pygments-carve#86)
+- A bare emphasis run closes at its first guarded closer. A one-character
+  content was tried last, so `(/x/) and a./b/` read as one span and
+  `a =f=>g= b` marked `f=>g`; both now read as the engine does.
+  (markup-carve/pygments-carve#86)
+- An attribute block holding a bare quote is no longer scoped: the engine
+  renders `[x]{key=a"b}` as text, and a quoted value on a standalone attribute
+  line no longer runs onto the next line. (markup-carve/pygments-carve#86)
+- An escaped delimiter, or one inside a code span, a link, an image, a
+  reference or an autolink, no longer closes a bare or braced span:
+  `a *b\* c` stays text and `{=a \=} b=}` is one mark.
+  (markup-carve/pygments-carve#80, markup-carve/pygments-carve#87)
+- A code span closes only on a run of its own width, may cross a line of its
+  paragraph, and with no partner runs to the end of its paragraph; in a table
+  row it stops at the closing pipe. (markup-carve/pygments-carve#87)
+- An unclosed `^[` or `:name[` is text. As a pushed state it used to color
+  the rest of the document. (markup-carve/pygments-carve#87)
+- A list marker, ordered marker or caption on a paragraph's later line is
+  paragraph text, and a table row needs its closing pipe.
+  (markup-carve/pygments-carve#87)
+- A block on a container's marker line is read as a block: `> - item`,
+  `> # H`, `- > q`, `- # H` and `: - item` under a term. A fence on an item's or
+  a description's marker line, or behind a quote marker, pairs with its closer.
+  (markup-carve/pygments-carve#87)
+- The content of an emphasis span and an inline link's text are lexed as
+  inline content, so `{=a *b* c=}` marks a strong inside the highlight. A
+  braced span's own delimiter is literal inside it, as `{*a *b* c*}` renders.
+  (markup-carve/pygments-carve#88)
+- A bare or braced span and a `{%...%}` template span may cross a line of
+  their paragraph. (markup-carve/pygments-carve#88)
+- `::: >` and `::: \` scope their sigil like `::: |`, and `<1>` outside a
+  fence is text, as the engine renders it. (markup-carve/pygments-carve#88)
+- Paragraph text is emitted as runs rather than one token per character.
+  (markup-carve/pygments-carve#88)
+- A braced span nests, its own kind too: `{*a {*b*} c*}` is a strong inside a
+  strong, and an outer opener left without a closer stays literal. A bare
+  closer inside a braced span no longer closes a bare span: `*a {=b*=} c*` is
+  one strong holding a mark. (markup-carve/pygments-carve#89)
+
 ## [0.1.0] - 2026-10-08
 
 ### Added

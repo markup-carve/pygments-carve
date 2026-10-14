@@ -49,13 +49,32 @@ the definition markers for footnotes, link references and abbreviations.
 Inline: the emphasis families in Carve's spelling plus their braced forced
 forms, code and inline literals, math, links, images, spans, attributes,
 footnotes and inline footnotes, citations, cross-references, autolinks,
-extensions (`:name[...]`), symbols, code callouts, mentions, tags, escapes,
+extensions (`:name[...]`), symbols, code callouts in a fence, mentions, tags, escapes,
 hard breaks, and smart typography - all nineteen alternatives the spec grammar
 names under `arrow`, `comparison` and `typographic_symbol` plus the dash and
 ellipsis runs, which is the set Prism and highlight.js carry. Two productions of
 `smart_typography` are not scoped and are named as such in
 `tests/test_typography.py`: `smart_quote`, which is per-character contextual
 substitution rather than a run, and the braced en dash `{--}`.
+
+Inside a span the content is lexed too, so `{=a *b* c=}` marks a strong inside
+the highlight, and a link's text holds its own emphasis.
+
+## Fence bodies in their own language
+
+A fence naming a language Pygments knows is highlighted in that language, and a
+raw block's `=FORMAT` names its language the same way (`=html` reads as HTML).
+Code callout markers (`<1>`) and, behind a quote, each line's `>` keep their
+own scope. A language Pygments does not know, or no language, leaves the body
+verbatim. This is the `handlecodeblocks` option of Pygments' Markdown lexer,
+with the same default; pass `handlecodeblocks=False` to read every body
+verbatim:
+
+```python
+from pygments_carve import CarveLexer
+
+lexer = CarveLexer(handlecodeblocks=False)
+```
 
 ## Deliberate limits
 
@@ -84,19 +103,23 @@ block at all and the corpus renders it as a paragraph. Nor does a body longer
 than 512 lines; that bound is what keeps a file of openers that can never pair
 from costing a scan of the document per line.
 
+A fence opened inside a container pairs too: on a list item's or a
+description's marker line, with its closer at that item's content column, and
+behind a quote marker, with every line up to the closer carrying the marker.
+The same 512-line bound applies.
+
+**A paragraph is recognized where one starts after a blank line.** List markers
+and captions do not interrupt a paragraph, so `para` followed by `- x` is one
+paragraph and the second line is not scoped as a list. A regex cannot see what
+the line above was, so a paragraph that follows a heading or a closed block
+with no blank line between them keeps the block reading on its later lines.
+
 **Pygments' `stripnl` and `ensurenl` are off.** They strip a document's leading
 and trailing newlines and append one that is not there, which is reasonable for
 a programming language and not for Carve: a fence keeps the blank line at the end
 of its content, and the spec forbids encoding a blank payload line and no payload
 line identically. A caller who wants the Pygments behavior can still pass either
 option (markup-carve/pygments-carve#33).
-
-**A `=` run is closed by the nearest guarded delimiter, not by a delimiter
-stack.** The word-boundary guards the grammar states for the bare set are
-carried on both ends, but the run resolution behind them is not: this lexer has
-no delimiter-stack model, so `a =f=>g= b` marks `f=>g` where the engine marks
-`f`. Pinned in `test_bare_emphasis.py` so it cannot drift into something else
-(markup-carve/pygments-carve#36).
 
 **An attribute block is one token.** `{#id .cls key="v"}` is emitted whole as
 `Name.Attribute` rather than split into parts, matching how the sibling grammars

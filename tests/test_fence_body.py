@@ -30,7 +30,7 @@ import time
 
 import pytest
 
-from pygments.token import Comment, Generic, Keyword, Name, Punctuation, String, Text
+from pygments.token import Comment, Generic, Keyword, Name, Number, Punctuation, String, Text
 
 from pygments_carve import CarveLexer
 from pygments_carve.lexer import _FENCE_BODY_LINES
@@ -58,7 +58,14 @@ VERBATIM = (String.Backtick, Name.Constant)
 CORPUS = pathlib.Path(__file__).parent.parent / 'spec' / 'tests' / 'corpus'
 DOCUMENTS = sorted(CORPUS.glob('*.crv')) if CORPUS.is_dir() else []
 
-LEXER = CarveLexer()
+#: Fence bodies are read verbatim here, so what these pins hold is how a fence
+#: PAIRS, not which languages Pygments happens to know. Handing a body to its
+#: language's lexer is pinned in test_fence_body.py.
+LEXER = CarveLexer(handlecodeblocks=False)
+
+
+def build_verbatim(source):
+    return build_lexer(source, handlecodeblocks=False)
 SOURCE = lexer_source()
 
 corpus = pytest.mark.skipif(
@@ -155,7 +162,7 @@ def test_pin_holds(pin):
 def test_deleting_a_rule_removes_exactly_that_compiled_rule(index):
     """What earns the right to say "delete rule N" below."""
     base = rule_patterns(LEXER, BLOCK)
-    mutant = build_lexer(without_rule(SOURCE, index, BLOCK))
+    mutant = build_verbatim(without_rule(SOURCE, index, BLOCK))
     assert rule_patterns(mutant, BLOCK) == base[:index] + base[index + 1:]
 
 
@@ -198,14 +205,14 @@ def _regression_source():
     return out.replace(anchor, _REGRESSION_STATES + anchor, 1)
 
 
-REGRESSION = build_lexer(_regression_source())
+REGRESSION = build_verbatim(_regression_source())
 
 
 @pytest.mark.parametrize('pin', PINS, ids=_named)
 def test_pin_is_sharp(pin):
     """Some mutation must break every pin, or the pin is inert."""
     name, source, tokens, index = pin
-    deleted = commentlines.collapsed(build_lexer(without_rule(SOURCE, index, BLOCK)), source)
+    deleted = commentlines.collapsed(build_verbatim(without_rule(SOURCE, index, BLOCK)), source)
     regressed = commentlines.collapsed(REGRESSION, source)
     assert deleted != tokens or regressed != tokens, (
         'pin %r survives both mutations - block rule %d deleted, and the #32 rule '
@@ -290,6 +297,111 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     hits = [p.name for p in DOCUMENTS
             if _non_verbatim(REGRESSION, p.read_text(encoding='utf-8'))]
     assert len(hits) == 133, len(hits)
+
+
+# ----------------------------------------------------------------------------
+# Fences inside a container, and the engine's reading of every pairing
+# ----------------------------------------------------------------------------
+
+ITEM_FENCE_RULE = 7
+QUOTED_FENCE_RULE = 8
+
+
+def _documents_with_html():
+    for path in DOCUMENTS:
+        html = path.with_suffix('.html')
+        if html.is_file():
+            yield path, path.read_text(encoding='utf-8'), html.read_text(encoding='utf-8')
+
+
+def _live_in_containers(lexer):
+    """``[(document, body, wrong scopes)]`` for every container fence body the
+    engine renders as code and the lexer scopes as something else."""
+    out = []
+    for path, source, html in _documents_with_html():
+        for body in fencebodies.container_bodies(source):
+            if not fencebodies.confirmed(source, html, body):
+                continue
+            wrong = {t: v for t, v in fencebodies.scopes_in(lexer, source, body).items()
+                     if t not in VERBATIM}
+            if wrong:
+                out.append((path.stem, body, wrong))
+    return out
+
+
+def test_the_container_rules_are_where_the_index_says():
+    rules = state_rules(SOURCE, BLOCK)
+    assert '_ITEM_FENCE' in rules[ITEM_FENCE_RULE][2]
+    assert '_QUOTED_FENCE' in rules[QUOTED_FENCE_RULE][2]
+
+
+@corpus
+def test_no_container_fence_body_is_scoped_as_carve():
+    """The top-level reader steps past a fence behind `>` or on a marker line,
+    because the fence is not at the start of its line, so the gate above never
+    saw one. This reads them, and asks only about the bodies the engine's HTML
+    renders as code."""
+    assert _live_in_containers(LEXER) == []
+
+
+@corpus
+def test_the_corpus_has_container_fences_to_measure():
+    confirmed = sum(1 for _, source, html in _documents_with_html()
+                    for body in fencebodies.container_bodies(source)
+                    if fencebodies.confirmed(source, html, body))
+    assert confirmed >= 15, confirmed
+
+
+@corpus
+def test_the_container_gate_reports_a_body_without_the_container_rules():
+    mutant = build_verbatim(without_rule(without_rule(SOURCE, QUOTED_FENCE_RULE, BLOCK),
+                                         ITEM_FENCE_RULE, BLOCK))
+    assert len(_live_in_containers(mutant)) >= 10
+
+
+@corpus
+def test_a_paired_body_is_one_the_engine_renders():
+    """Every body the reader pairs is checked against the engine's HTML.
+
+    These twenty are not: the reader and the lexer pair a fence where the
+    engine reads a container the lexer does not model. Each is an opener
+    indented off column 0 at document level (`11-fenced-code-16` renders an
+    inline code span), or a fence under a list item, a description or a quote
+    in a nested host whose content column decides where the fence belongs.
+    That is the documented limit of block openers not anchored at column 0,
+    recorded so a change in either direction shows up here.
+    """
+    unconfirmed = sorted({path.stem for path, source, html in _documents_with_html()
+                          for body in fencebodies.bodies(source)
+                          if fencebodies.confirmed(source, html, body) is False})
+    assert unconfirmed == [
+        '11-fenced-code-16',
+        '276-a-fence-opened-on-a-list-marker-line-body-below-the-content-column-7',
+        '476-an-item-s-fence-is-read-once-whatever-block-it-follows',
+        '476-an-item-s-fence-is-read-once-whatever-block-it-follows-2',
+        '478-a-definition-body-s-open-code-fence-ends-at-a-line-below-its-column-3',
+        '478-a-definition-body-s-open-code-fence-ends-at-a-line-below-its-column-5',
+        '480-a-bare-colon-opener-in-a-description-body-is-an-opener-7',
+        '509-a-fence-closer-below-a-nested-item-s-column-ends-containers-down-to-its-owner-10',
+        '509-a-fence-closer-below-a-nested-item-s-column-ends-containers-down-to-its-owner-11',
+        '509-a-fence-closer-below-a-nested-item-s-column-ends-containers-down-to-its-owner-12',
+        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only-10',
+        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only-11',
+        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only-13',
+        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only-2',
+        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only-3',
+        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only-4',
+        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only-5',
+        '558-a-container-boundary-is-read-at-the-container-s-own-column-4',
+        '558-a-container-boundary-is-read-at-the-container-s-own-column-5',
+        '561-a-line-block-payload-span-pairs-past-the-content-column-2',
+    ], unconfirmed
+
+
+def test_the_html_check_can_say_no():
+    body = fencebodies.bodies('```\nx\n```\n')[0]
+    assert fencebodies.confirmed('```\nx\n```\n', '<pre><code>x\n</code></pre>', body)
+    assert fencebodies.confirmed('```\nx\n```\n', '<p><code>x</code></p>', body) is False
 
 
 def test_the_reader_reports_live_markup_when_there_is_some():
@@ -378,7 +490,7 @@ def _without_guard(marker):
     """
     lines = [l for l in SOURCE.split('\n') if marker in l]
     assert len(lines) == 1, 'expected one guard line holding %r, found %d' % (marker, len(lines))
-    return build_lexer(SOURCE.replace(lines[0] + '\n', '', 1))
+    return build_verbatim(SOURCE.replace(lines[0] + '\n', '', 1))
 
 
 UNGUARDED = _without_guard('+ _FENCE_INFO +')
@@ -409,3 +521,60 @@ def test_the_corpus_says_those_openers_render_a_paragraph(sample, body, case):
     html = (CORPUS / (case + '.html')).read_text(encoding='utf-8')
     assert '<pre>' not in html, html
     assert '<p><code>' in html, html
+
+
+# ----------------------------------------------------------------------------
+# A body in a language Pygments knows is read in that language
+# ----------------------------------------------------------------------------
+
+DELEGATING = CarveLexer()
+
+
+def _body_run(lexer, source):
+    """The tokens between the opener's newline and the closer, joined by type."""
+    tokens = list(lexer.get_tokens(source))
+    assert ''.join(v for _, v in tokens) == source, 'the delegated body lost text'
+    return tokens
+
+
+def test_a_body_is_read_by_its_language():
+    """As Pygments' Markdown lexer does, behind the same `handlecodeblocks`."""
+    run = _body_run(DELEGATING, '```python\n# not a heading\nx = "a *b* c"\n```\n')
+    assert (Comment.Single, '# not a heading') in run
+    assert (String.Double, 'a *b* c') in run
+    assert not [v for t, v in run if t in (Generic.Heading, Generic.Strong)]
+
+
+def test_a_callout_stays_a_callout_in_any_language():
+    run = _body_run(DELEGATING, '``` js\nconst a = 1 <1>\n```\n')
+    assert (Name.Constant, '<1>') in run
+    assert (Keyword.Declaration, 'const') in run
+
+
+def test_a_raw_block_is_read_by_its_format():
+    run = _body_run(DELEGATING, '```=html\n<b>x</b>\n```\n')
+    assert (Name.Tag, 'b') in run
+
+
+def test_a_quoted_body_keeps_the_quote_markers():
+    run = _body_run(DELEGATING, '> ```py\n> x = 1 <2>\n> ```\n')
+    assert (Punctuation, '> ') in run and (Name.Constant, '<2>') in run
+    assert (Number.Integer, '1') in run
+
+
+def test_a_body_in_an_item_is_read_by_its_language():
+    run = _body_run(DELEGATING, '- ```py\n  # c\n  ```\n')
+    assert (Comment.Single, '# c') in run
+
+
+@pytest.mark.parametrize('source', [
+    '```nosuchlanguage\nx *y*\n```\n',
+    '```\nx *y*\n```\n',
+])
+def test_an_unknown_or_missing_language_is_read_verbatim(source):
+    assert (String.Backtick, 'x *y*\n') in _body_run(DELEGATING, source)
+
+
+def test_the_option_turns_it_off():
+    run = _body_run(LEXER, '```python\n# c\n```\n')
+    assert (String.Backtick, '# c\n') in run

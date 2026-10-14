@@ -92,7 +92,14 @@ INCLUDED = 'inline'
 CORPUS = pathlib.Path(__file__).parent.parent / 'spec' / 'tests' / 'corpus'
 DOCUMENTS = sorted(CORPUS.glob('*.crv')) if CORPUS.is_dir() else []
 
-LEXER = CarveLexer()
+#: Fence bodies are read verbatim here, so what these pins hold is how a fence
+#: PAIRS, not which languages Pygments happens to know. Handing a body to its
+#: language's lexer is pinned in test_fence_body.py.
+LEXER = CarveLexer(handlecodeblocks=False)
+
+
+def build_verbatim(source):
+    return build_lexer(source, handlecodeblocks=False)
 SOURCE = lexer_source()
 RULES = state_rules(SOURCE, BLOCK)
 
@@ -156,6 +163,15 @@ PINS = [
         note='The one rule the corpus cannot see; see the corpus gate below.'),
     Pin('lone code fence line', '```js\nx\n',
         [(Punctuation, '```'), (Name.Builtin, 'js')]),
+    Pin('item fence pair', '- ```py\n  # x\n  ```\n',
+        [(Punctuation, '-'), (Punctuation, '```'), (Name.Builtin, 'py'),
+         (String.Backtick, '  # x\n'), (Punctuation, '```')],
+        note='The closer sits at the item\'s content column, which only this '
+             'rule measures; without it the body is a heading.'),
+    Pin('quoted fence pair', '> ```py\n> # x\n> ```\n',
+        [(Punctuation, '>'), (Punctuation, '```'), (Name.Builtin, 'py'),
+         (Punctuation, '> '), (String.Backtick, '# x'), (String.Backtick, '\n'),
+         (Punctuation, '>'), (Punctuation, '```')]),
     Pin('layout container', ':::|\n',
         [(Punctuation, ':::'), (Operator, '|')]),
     Pin('container div', ':::note\n',
@@ -197,16 +213,22 @@ PINS = [
         [(Number.Integer, '.')]),
     Pin('table continuation row', '+ a |\n',
         [(Punctuation, '+'), (Punctuation, '|')]),
-    Pin('table header row', '|= a | b\n',
-        [(Operator, '|='), (Punctuation, '|')]),
-    Pin('table row', '| a | b\n',
-        [(Punctuation, '|'), (Punctuation, '|')]),
+    Pin('table header row', '|= a | b |\n',
+        [(Operator, '|='), (Punctuation, '|'), (Punctuation, '|')]),
+    Pin('table row', '| a | b |\n',
+        [(Punctuation, '|'), (Punctuation, '|'), (Punctuation, '|')]),
     Pin('standalone attribute block', '{.a\n.b}\n',
         [(Name.Attribute, '{.a\n.b}')],
         note='It spans lines, which is what tells it from the inline form; a '
              'one-line block reads the same either way.'),
-    Pin('the included inline state', 'a *b* c\n',
-        [(Punctuation, '*'), (Generic.Strong, 'b'), (Punctuation, '*')]),
+    Pin('paragraph', 'para\n- not a list\n', [],
+        note='A list marker does not interrupt a paragraph; without the state '
+             'the second line is a bullet.'),
+    Pin('the included inline state', '# H\na *b* c\n',
+        [(Punctuation, '#'), (Generic.Heading, 'H'),
+         (Punctuation, '*'), (Generic.Strong, 'b'), (Punctuation, '*')],
+        note='After a heading, where no paragraph state is pushed: anywhere a '
+             'paragraph opens, that state reads the line instead.'),
 ]
 
 
@@ -215,7 +237,7 @@ def _named(pin):
 
 
 def _mutants():
-    return [build_lexer(without_rule(SOURCE, i, BLOCK)) for i in range(len(RULES))]
+    return [build_verbatim(without_rule(SOURCE, i, BLOCK)) for i in range(len(RULES))]
 
 
 MUTANTS = _mutants()
@@ -441,7 +463,7 @@ GUARDS = [
            (Comment.Preproc, '%%%'), (Comment, '%')]),
     Guard('a raw fence skips a byte order mark only at offset 0', 3, r'\A', 0,
           'p\n\n\ufeff```=html\nx\n```\n',
-          [(Punctuation, '`'), (Punctuation, '`'), (Punctuation, '```')],
+          [(Punctuation, '```'), (String.Backtick, '=html\nx'), (Punctuation, '```')],
           [(Punctuation, '```'), (Keyword.Type, '=html'),
            (String.Backtick, 'x\n'), (Punctuation, '```')]),
     Guard('a raw block takes no title', 3, r"(?= ?=[a-zA-Z][\w+.-]*[ \t]*$)", 0,
@@ -457,7 +479,7 @@ GUARDS = [
            (String.Backtick, 'x\n'), (Punctuation, '```')]),
     Guard('a code fence skips a byte order mark only at offset 0', 4, r'\A', 0,
           'p\n\n\ufeff```\nx\n```\n',
-          [(Punctuation, '`'), (Punctuation, '`'), (Punctuation, '```')],
+          [(Punctuation, '```'), (String.Backtick, '\nx'), (Punctuation, '```')],
           [(Punctuation, '```'), (String.Backtick, 'x\n'), (Punctuation, '```')]),
     Guard('an info string outside the three shapes opens no block', 4,
           r"(?= ?(?:' + _FENCE_INFO + r')?[ \t]*$)", 0,
@@ -469,45 +491,49 @@ GUARDS = [
           '```\nx\n``` junk\n',
           [(Punctuation, '```'), (Punctuation, '```'), (Name.Builtin, 'junk')],
           [(Punctuation, '```'), (String.Backtick, 'x\n'), (Punctuation, '```')]),
-    Guard('a star break is the whole line', 11, '$', 0, '*** text\n',
+    Guard('a star break is the whole line', 13, '$', 0, '*** text\n',
           [], [(Punctuation, '*** ')]),
-    Guard('a dash break is the whole line', 12, '$', 0, '--- text\n',
+    Guard('a dash break is the whole line', 14, '$', 0, '--- text\n',
           [(Punctuation, '---')], [(Punctuation, '--- ')]),
-    Guard('an underscore break is the whole line', 13, '$', 0, '___ text\n',
+    Guard('an underscore break is the whole line', 15, '$', 0, '___ text\n',
           [], [(Punctuation, '___ ')]),
-    Guard('a footnote definition needs content', 14, r'(?![ \t]*$)', 0,
+    Guard('a footnote definition needs content', 16, r'(?![ \t]*$)', 0,
           '[^a]: \n',
           [(Punctuation, '[^'), (Name.Label, 'a'), (Punctuation, ']')],
           [(Punctuation, '[^'), (Name.Label, 'a'), (Punctuation, ']:')]),
-    Guard('an abbreviation definition needs content', 15, r'(?![ \t]*$)', 0,
+    Guard('an abbreviation definition needs content', 17, r'(?![ \t]*$)', 0,
           '*[A]: \n', [],
           [(Punctuation, '*['), (Name.Entity, 'A'), (Punctuation, ']:')]),
-    Guard('a reference label does not start with an at sign', 16, '(?!@)', 0,
+    Guard('a reference label does not start with an at sign', 18, '(?!@)', 0,
           '[@a]: /u\n',
           [(Punctuation, '['), (Name.Variable, '@a'), (Punctuation, ']')],
           [(Punctuation, '['), (Name.Label, '@a'), (Punctuation, ']:'),
            (Name.Tag, '/u')]),
-    Guard('a reference definition ends at the end of the line', 16, '$', 0,
+    Guard('a reference definition ends at the end of the line', 18, '$', 0,
           '[a]: /u zzz\n', [],
           [(Punctuation, '['), (Name.Label, 'a'), (Punctuation, ']:'),
            (Name.Tag, '/u')]),
-    Guard('a definition-list term needs content', 17, r'(?=[^ \t\n])', 0,
+    Guard('a definition-list term needs content', 19, r'(?=[^ \t\n])', 0,
           ':: \n', [], [(Punctuation, '::')]),
-    Guard('a blockquote marker needs a space after it', 18, r'(?=[ \t]|$)', 0,
+    Guard('a blockquote marker needs a space after it', 20, r'(?=[ \t]|$)', 0,
           '>foo\n', [], [(Punctuation, '>'), (Generic.Emph, 'foo')]),
-    Guard('a task item needs content', 19, r'(?= +[ \t]*[^ \t\n])', 0,
+    Guard('a task item needs content', 21, r'(?= +[ \t]*[^ \t\n])', 0,
           '- [x] \n', [(Punctuation, '-')],
           [(Punctuation, '-'), (Name.Constant, '[x]')]),
-    Guard('a bullet needs content', 20, r'(?= +[ \t]*[^ \t\n])', 0,
+    Guard('a bullet needs content', 22, r'(?= +[ \t]*[^ \t\n])', 0,
           '- \n', [], [(Punctuation, '-')]),
-    Guard('a continuation marker is alone on its line', 21, '$', 0,
+    Guard('a continuation marker is alone on its line', 23, '$', 0,
           '+ foo\n', [], [(Punctuation, '+')]),
-    Guard('an ordered marker needs content', 22, r'(?= +[ \t]*[^ \t\n])', 0,
+    Guard('an ordered marker needs content', 24, r'(?= +[ \t]*[^ \t\n])', 0,
           '1. \n', [], [(Number.Integer, '1.')]),
-    Guard('a bare ordinal needs content', 23, r'(?= +[ \t]*[^ \t\n])', 0,
+    Guard('a bare ordinal needs content', 25, r'(?= +[ \t]*[^ \t\n])', 0,
           '. \n', [], [(Number.Integer, '.')]),
-    Guard('a continuation row ends in a pipe', 24, r'(?=[^\n]*\|[ \t]*$)', 0,
+    Guard('a continuation row ends in a pipe', 26, r'(?=[^\n]*\|[ \t]*$)', 0,
           '+ foo\n', [], [(Punctuation, '+')]),
+    Guard('a header row ends in a pipe', 27, "(?=' + _ROW_END + r')", 0,
+          '|= a | b\n', [], [(Operator, '|='), (Punctuation, '|')]),
+    Guard('a row ends in a pipe', 28, "(?=' + _ROW_END + r')", 0,
+          '| a | b\n', [], [(Punctuation, '|'), (Punctuation, '|')]),
 ]
 
 SAMPLED = [g for g in GUARDS if g.sample is not None]
@@ -574,7 +600,7 @@ def test_removing_the_guard_takes_the_shape(guard):
     Deleting the whole rule would make every one of these pass for the wrong
     reason, so the clause is removed on its own and the rule left in place.
     """
-    mutant = build_lexer(
+    mutant = build_verbatim(
         without_clause(SOURCE, guard.index, guard.clause, guard.occurrence, BLOCK))
     assert scoped_run(mutant, guard.sample) == guard.taken, (
         'without guard %r the lexer is expected to read %r as %r; if it no '
@@ -601,25 +627,33 @@ def test_the_blank_line_guard_is_what_keeps_the_fence_search_cheap():
 
     The assertion is the RATIO across a fixed pair of sizes, not a stopwatch
     reading: absolute times on a machine carrying other load measure the load.
-    Measured here, eight more blank lines cost the guarded lexer 1.5x and the
-    unguarded one 180x.
+    The guarded lexer is measured on 2000 and 4000 lines, best of five: at 12
+    and 20 lines it took microseconds, which is timer noise, and the pin failed
+    on a loaded machine with nothing wrong. Doubling must stay under x3, the
+    linear threshold the fence closer search uses, on one of three attempts; an
+    exponential search does not finish 2000 lines at all. The unguarded lexer is measured where it can
+    still finish: eight more blank lines cost it 180x.
     """
-    unguarded = build_lexer(without_clause(SOURCE, 1, r'(?!\2)', 0, BLOCK))
+    unguarded = build_verbatim(without_clause(SOURCE, 1, r'(?!\2)', 0, BLOCK))
 
     def blanks(n):
         return '%%%\n' + ' \n' * n
 
-    def ratio(lexer):
-        small = _elapsed(lexer, blanks(12))
-        large = _elapsed(lexer, blanks(20))
-        return large / max(small, 1e-9)
+    def ratio(lexer, small, large, repeats):
+        return (_elapsed(lexer, blanks(large), repeats)
+                / max(_elapsed(lexer, blanks(small), repeats), 1e-9))
 
-    guarded_ratio = ratio(LEXER)
+    # Measured again before it fails, as tests/test_inline_timing.py does: a
+    # linear search is under x3 on most runs, an exponential one on none.
+    for _ in range(3):
+        guarded_ratio = ratio(LEXER, 2000, 4000, 5)
+        if guarded_ratio < 3:
+            break
     assert guarded_ratio < 3, (
-        'eight more whitespace-only lines under an unclosed comment fence '
+        'doubling the whitespace-only lines under an unclosed comment fence '
         'multiplied the time by %.2f, which is the growth the guard exists to '
         'stop.' % guarded_ratio)
-    unguarded_ratio = ratio(unguarded)
+    unguarded_ratio = ratio(unguarded, 12, 20, 3)
     assert unguarded_ratio > 8, (
         'without the guard the same eight lines are expected to be far more '
         'than eight times the work (measured 180x); they were %.2fx, so this '
@@ -638,13 +672,17 @@ DEFLIST_PINS = [
     Pin('another block opener', ':: T\n# H\n: e\n',
         [(Punctuation, '::'), (Generic.Heading, 'T'),
          (Punctuation, '#'), (Generic.Heading, 'H')]),
-    Pin('a blank line before prose', ':: T\n: d\n\np\n: e\n',
+    Pin('a blank line before prose', ':: T\n: d\n\np\n\n: e\n',
         [(Punctuation, '::'), (Generic.Heading, 'T'), (Punctuation, ':')]),
-    Pin('a later term', ':: a\n:: b\n\np\n: e\n',
+    Pin('a later term', ':: a\n:: b\n\np\n\n: e\n',
         [(Punctuation, '::'), (Generic.Heading, 'a'),
          (Punctuation, '::'), (Generic.Heading, 'b')],
         note='Without it the block rule pushes a second `deflist`, and one '
              'blank line pops only one of them.'),
+    Pin('description fence', ':: T\n: ```py\n  # x\n  ```\n',
+        [(Punctuation, '::'), (Generic.Heading, 'T'), (Punctuation, ':'),
+         (Punctuation, '```'), (Name.Builtin, 'py'), (String.Backtick, '  # x\n'),
+         (Punctuation, '```')]),
     Pin('description', ':: T\n: d\n',
         [(Punctuation, '::'), (Generic.Heading, 'T'), (Punctuation, ':')]),
     Pin('the included block state', ':: T\n: d *x*\n',
@@ -652,7 +690,7 @@ DEFLIST_PINS = [
          (Punctuation, '*'), (Generic.Strong, 'x'), (Punctuation, '*')]),
 ]
 
-DEFLIST_MUTANTS = [build_lexer(without_rule(SOURCE, i, DEFLIST))
+DEFLIST_MUTANTS = [build_verbatim(without_rule(SOURCE, i, DEFLIST))
                    for i in range(len(DEFLIST_RULES))]
 
 
@@ -693,7 +731,7 @@ DEFLIST_GUARDS = [
           ':: T\n:: \n',
           [(Punctuation, '::'), (Generic.Heading, 'T')],
           [(Punctuation, '::'), (Generic.Heading, 'T'), (Punctuation, '::')]),
-    Guard('a description needs a space and content', 3, r'(?= +[ \t]*[^ \t\n])', 0,
+    Guard('a description needs a space and content', 4, r'(?= +[ \t]*[^ \t\n])', 0,
           ':: T\n: \n',
           [(Punctuation, '::'), (Generic.Heading, 'T')],
           [(Punctuation, '::'), (Generic.Heading, 'T'), (Punctuation, ':')]),
@@ -714,7 +752,7 @@ def test_the_deflist_guard_refuses_the_shape(guard):
 
 @pytest.mark.parametrize('guard', DEFLIST_GUARDS, ids=_guarded)
 def test_removing_the_deflist_guard_takes_the_shape(guard):
-    mutant = build_lexer(
+    mutant = build_verbatim(
         without_clause(SOURCE, guard.index, guard.clause, guard.occurrence, DEFLIST))
     assert scoped_run(mutant, guard.sample) == guard.taken
 

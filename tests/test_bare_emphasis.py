@@ -39,6 +39,7 @@ from pygments.token import Generic, Punctuation, Text
 from pygments_carve import CarveLexer
 
 import emphasisruns
+from coverage import merged
 from lexerrules import INLINE, build_lexer, lexer_source, state_rules
 
 CORPUS = pathlib.Path(__file__).parent.parent / 'spec' / 'tests' / 'corpus'
@@ -87,7 +88,7 @@ def _emphasized(lexer, source, text):
     """Whether ``text`` lands whole in one emphasis token."""
     marks = (Generic.Strong, Generic.Emph, Generic.Underline,
              Generic.Deleted, Generic.Inserted)
-    return any(ttype in marks and value == text for ttype, value in lexer.get_tokens(source))
+    return any(ttype in marks and value == text for ttype, value in merged(lexer, source))
 
 
 # ----------------------------------------------------------------------------
@@ -171,18 +172,20 @@ def test_a_forced_span_bypasses_both_guards():
     assert _emphasized(LEXER, 'a1{*b*}2c', 'b')
 
 
-def test_the_one_stated_divergence_from_the_engine():
-    """Nothing is guarded on the RIGHT of a `=`, and that is deliberate.
+def test_a_run_closes_at_its_first_guarded_closer():
+    """A run is closed by the first delimiter that satisfies the closer guards.
 
-    This lexer carries no delimiter-stack model, so it takes the nearest closer
-    that satisfies the guards rather than running the engine's close-first
-    resolution. The engine marks `f` in `a =f=>g= b` and this marks `f=>g`. It
-    is recorded rather than fixed, and recorded HERE so it cannot drift into
-    something else unnoticed (markup-carve/pygments-carve#36).
+    `a =f=>g= b` used to mark `f=>g` and was recorded as a divergence from the
+    engine, put down to the lexer having no delimiter stack. It was a quantifier:
+    the content was `\\S(?:[^\\n]*?\\S)?`, and that optional group is greedy, so a
+    one-character content was tried only after every longer one had failed.
+    Five corpus documents carried the same misreading, `01-emphasis-8` among
+    them: `(/x/) and a./b/` renders two spans, and the lexer read one.
     """
-    assert _emphasized(LEXER, 'a =f=>g= b', 'f=>g')
-    # The other half, which does match the engine: `=>` is not an arrow any
-    # more, so `a =>foo= b` marks `>foo`.
+    assert _emphasized(LEXER, 'a =f=>g= b', 'f')
+    assert _emphasized(LEXER, '(/x/) and a./b/', 'x')
+    assert _emphasized(LEXER, '(/x/) and a./b/', 'b')
+    # `=>` is not an arrow any more, so `a =>foo= b` marks `>foo`.
     assert _emphasized(LEXER, 'a =>foo= b', '>foo')
 
 
@@ -254,6 +257,11 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
     `535-*` entries arrived with the bump to carve 9d6d06c, on the same
     shape: a fence or an overindented marker inside a quoted item, which the
     unguarded rules read as a bare run.
+
+    Five of those left when blocks nested in a container started being read
+    as blocks: `276-*-5`, `455-*-2`, `519-*-2` and the two `535-*` entries
+    hold a fence or a marker behind `>`, `-` or `:`, which the container
+    rules now take before the inline state sees the delimiters.
     """
     hits = sorted(p.stem for p in DOCUMENTS
                   if _case(p)[1] is not None
@@ -275,10 +283,6 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         '-5',
         '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters'
         '-7',
-        '276-a-fence-opened-on-a-list-marker-line-body-below-the-content-colu'
-        'mn-5',
-        '455-an-unterminated-fence-on-a-nested-lead-in-a-description-body-own'
-        's-its-body-2',
         '465-an-underscore-pair-in-text-is-escaped-where-the-line-would-pair-'
         'it',
         '467-a-bare-closer-does-not-reach-inside-a-link-destination',
@@ -289,9 +293,6 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         'e-pairs-2',
         '484-a-delimiter-after-an-underscore-or-slash-opens-only-when-that-on'
         'e-pairs-6',
-        '519-a-shifted-fence-in-a-quoted-item-stores-no-continuation-claim-2',
-        '535-a-marker-line-opaque-quote-keeps-overindented-markers-literal-11',
-        '535-a-marker-line-opaque-quote-keeps-overindented-markers-literal-12',
         '76-doubled-emphasis-delimiters',
         '79-two-char-delimiter-runs',
     ], hits

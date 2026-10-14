@@ -89,14 +89,21 @@ PINS = [
         [(String.Escape, '\\*')]),
     Pin('trailing comment', 'a %% note',
         [(Comment.Preproc, '%%'), (Comment, ' note')]),
-    Pin('literal code span', 'a !`x` b',
-        [(Operator, '!'), (Punctuation, '`'), (Literal, 'x'), (Punctuation, '`')]),
-    Pin('display math', 'a $$`x` b',
-        [(Operator, '$$'), (Punctuation, '`'), (String.Other, 'x'), (Punctuation, '`')]),
-    Pin('inline math', 'a $`x` b',
-        [(Operator, '$'), (Punctuation, '`'), (String.Other, 'x'), (Punctuation, '`')]),
-    Pin('inline code', 'a `x` b',
-        [(Punctuation, '`'), (String.Backtick, 'x'), (Punctuation, '`')]),
+    Pin('literal code span', '| a !`x` b |',
+        [(Punctuation, '|'), (Operator, '!'), (Punctuation, '`'), (Literal, 'x'), (Punctuation, '`'),
+         (Punctuation, '|')],
+        note='In a table cell, because a paragraph lexes the same span again '
+             'with the multi-line rule in `inline`, so deleting this one alone '
+             'changes nothing there.'),
+    Pin('display math', '| a $$`x` b |',
+        [(Punctuation, '|'), (Operator, '$$'), (Punctuation, '`'), (String.Other, 'x'), (Punctuation, '`'),
+         (Punctuation, '|')]),
+    Pin('inline math', '| a $`x` b |',
+        [(Punctuation, '|'), (Operator, '$'), (Punctuation, '`'), (String.Other, 'x'), (Punctuation, '`'),
+         (Punctuation, '|')]),
+    Pin('inline code', '| a `x` b |',
+        [(Punctuation, '|'), (Punctuation, '`'), (String.Backtick, 'x'), (Punctuation, '`'),
+         (Punctuation, '|')]),
     Pin('include directive', 'a {{ ch.crv#intro }} b',
         [(Punctuation, '{{'), (Name.Namespace, 'ch.crv'), (Name.Label, '#intro'),
          (Punctuation, '}}')],
@@ -146,11 +153,14 @@ PINS = [
     Pin('reference image', 'a ![alt][r] b',
         [(String.Other, '![alt]'), (Name.Label, '[r]')]),
     Pin('link', 'a [t](/u) b',
-        [(Name.Entity, '[t]'), (Punctuation, '('), (Name.Tag, '/u'), (Punctuation, ')')]),
+        [(Name.Entity, '['), (Name.Entity, 't]'), (Punctuation, '('),
+         (Name.Tag, '/u'), (Punctuation, ')')],
+        note='The label is lexed as inline content, a character run at a time.'),
     Pin('reference link', 'a [t][r] b',
         [(Name.Entity, '[t]'), (Name.Label, '[r]')]),
     Pin('label carrying attributes', 'a [t]{.c} b',
-        [(Name.Entity, '[t]'), (Name.Attribute, '{.c}')]),
+        [(Name.Entity, '['), (Name.Entity, 't]'),
+         (Name.Attribute, '{.c}')]),
     Pin('cross-reference', 'a </#sec> b',
         [(Punctuation, '</'), (Name.Namespace, '#sec'), (Punctuation, '>')]),
     Pin('autolink', 'a <https://e.com> b',
@@ -158,8 +168,6 @@ PINS = [
     Pin('role', 'a :name[body] b',
         [(Punctuation, ':'), (Name.Function, 'name'), (Punctuation, '['),
          (Name.Function, 'body'), (Punctuation, ']')]),
-    Pin('code callout', 'a <1> b',
-        [(Name.Constant, '<1>')]),
     Pin('symbol shortcode', 'a :smile: b',
         [(Name.Constant, ':smile:')]),
     Pin('attribute block', 'a x{.c} b',
@@ -359,3 +367,23 @@ def test_every_include_selector_spelling_is_scoped(name):
 @pytest.mark.parametrize('sample', ['{{ch.crv}}', '{{ ch.crv}}', '{{ch.crv }}'])
 def test_a_directive_without_its_padding_run_stays_literal(sample):
     assert scoped_run(LEXER, sample) == ()
+
+
+# A code span opens on a whole backtick run and closes on the next run of
+# exactly its width (corpus 477). Matching the opener's run as a substring let a
+# wider run close a narrower span and a narrower opener start inside a wider
+# run, and trying every narrower width made one long run superlinear.
+_CODE_RUNS = {
+    'a wider run inside the span is content':
+        ('x `a``b` y',
+         ((Punctuation, '`'), (String.Backtick, 'a``b'), (Punctuation, '`'))),
+    'a narrower run cannot close a wider span':
+        ('x ``a`b`` y',
+         ((Punctuation, '``'), (String.Backtick, 'a`b'), (Punctuation, '``'))),
+}
+
+
+@pytest.mark.parametrize('name', sorted(_CODE_RUNS))
+def test_a_code_span_closes_on_a_run_of_its_own_width(name):
+    sample, expected = _CODE_RUNS[name]
+    assert scoped_run(LEXER, sample) == expected
