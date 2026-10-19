@@ -765,7 +765,7 @@ class _DelimitedLexer(RegexLexer):
 
     @classmethod
     def for_separator(cls, separator):
-        """Every field is typed: the header record is Generic.Strong, an
+        """Every field is typed (the separator is Operator.Word, a saturated color in the default style): the header record is Generic.Strong, an
         unquoted field String.Other, a quoted one String, `""` String.Escape."""
         escaped = re.escape(separator)
         states = {}
@@ -773,13 +773,13 @@ class _DelimitedLexer(RegexLexer):
         def build(prefix, field, enter):
             on_newline = lambda pops: pops + enter
             states[prefix + 'root'] = [
-                (escaped, Operator),
+                (escaped, Operator.Word),
                 (r'"', String, prefix + 'quoted'),
                 (r'\n', Text, *enter),
                 (r'[^' + escaped + r'\n"]+', field, prefix + 'plain'),
             ]
             states[prefix + 'plain'] = [
-                (escaped, Operator, '#pop'),
+                (escaped, Operator.Word, '#pop'),
                 (r'\n', Text, on_newline(('#pop',))),
                 (r'[^' + escaped + r'\n]+', field),
             ]
@@ -789,7 +789,7 @@ class _DelimitedLexer(RegexLexer):
                 (r'[^\"]+', String),
             ]
             states[prefix + 'afterquote'] = [
-                (escaped, Operator, '#pop:2'),
+                (escaped, Operator.Word, '#pop:2'),
                 (r'\n', Text, on_newline(('#pop', '#pop'))),
                 (r'[^' + escaped + r'\n]+', field),
             ]
