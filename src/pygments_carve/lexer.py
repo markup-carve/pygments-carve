@@ -773,13 +773,13 @@ class _DelimitedLexer(RegexLexer):
         def build(prefix, field, enter):
             on_newline = lambda pops: pops + enter
             states[prefix + 'root'] = [
-                (escaped, Punctuation),
+                (escaped, Operator),
                 (r'"', String, prefix + 'quoted'),
                 (r'\n', Text, *enter),
                 (r'[^' + escaped + r'\n"]+', field, prefix + 'plain'),
             ]
             states[prefix + 'plain'] = [
-                (escaped, Punctuation, '#pop'),
+                (escaped, Operator, '#pop'),
                 (r'\n', Text, on_newline(('#pop',))),
                 (r'[^' + escaped + r'\n]+', field),
             ]
@@ -789,7 +789,7 @@ class _DelimitedLexer(RegexLexer):
                 (r'[^\"]+', String),
             ]
             states[prefix + 'afterquote'] = [
-                (escaped, Punctuation, '#pop:2'),
+                (escaped, Operator, '#pop:2'),
                 (r'\n', Text, on_newline(('#pop', '#pop'))),
                 (r'[^' + escaped + r'\n]+', field),
             ]

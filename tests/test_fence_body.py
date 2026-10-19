@@ -30,7 +30,7 @@ import time
 
 import pytest
 
-from pygments.token import Comment, Generic, Keyword, Name, Number, Punctuation, String, Text
+from pygments.token import Comment, Generic, Keyword, Name, Number, Operator, Punctuation, String, Text
 
 from pygments_carve import CarveLexer
 from pygments_carve.lexer import _FENCE_BODY_LINES
@@ -547,15 +547,15 @@ def test_a_body_is_read_by_its_language():
 
 @pytest.mark.parametrize('language,body,expected', [
     ('csv', 'Plan,Seats,Price per month\nStarter,1,"$0"\nTeam,10,"$49, billed yearly"\n',
-     [(Punctuation, ','), (String, '"$0"'), (String, '"$49, billed yearly"')]),
+     [(Operator, ','), (String, '"$0"'), (String, '"$49, billed yearly"')]),
     ('csv', 'a,"two\nlines",b\n',
-     [(String, '"two\nlines"'), (Punctuation, ',')]),
+     [(String, '"two\nlines"'), (Operator, ',')]),
     ('csv', 'a,"say ""hi""",b\n',
      [(String.Escape, '""'), (String, 'hi')]),
     ('tsv', 'a,b\t"two\tparts"\tc\n',
-     [(Generic.Strong, 'a,b'), (String, '"two\tparts"'), (Punctuation, '\t')]),
+     [(Generic.Strong, 'a,b'), (String, '"two\tparts"'), (Operator, '\t')]),
     ('csv', 'a,b"c,d\n',
-     [(Generic.Strong, 'b"c'), (Punctuation, ',')]),
+     [(Generic.Strong, 'b"c'), (Operator, ',')]),
     ('csv', 'a,"quoted"tail,b\n',
      [(String, '"quoted"'), (Generic.Strong, 'tail')]),
     ('csv', 'a,"unfinished\nmore',
