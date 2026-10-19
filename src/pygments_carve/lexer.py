@@ -760,11 +760,59 @@ _QUOTE_MARKER = re.compile(r'^[ \t]*>+[ \t]?', re.M)
 _LANGUAGES = {}
 
 
+class _DelimitedLexer(RegexLexer):
+    tokens = {}
+
+    @classmethod
+    def for_separator(cls, separator):
+        escaped = re.escape(separator)
+        return {
+            'root': [
+                (escaped, Punctuation),
+                (r'"', String, 'quoted'),
+                (r'\n', Text),
+                (r'[^' + escaped + r'\n"]+', Text, 'plain'),
+            ],
+            'plain': [
+                (escaped, Punctuation, '#pop'),
+                (r'\n', Text, '#pop'),
+                (r'[^' + escaped + r'\n]+', Text),
+            ],
+            'quoted': [
+                (r'""', String.Escape),
+                (r'"', String, 'afterquote'),
+                (r'[^\"]+', String),
+            ],
+            'afterquote': [
+                (escaped, Punctuation, '#pop:2'),
+                (r'\n', Text, '#pop:2'),
+                (r'[^' + escaped + r'\n]+', Text),
+            ],
+        }
+
+
+class CsvLexer(_DelimitedLexer):
+    name = 'CSV'
+    aliases = ['csv']
+    tokens = _DelimitedLexer.for_separator(',')
+
+
+class TsvLexer(_DelimitedLexer):
+    name = 'TSV'
+    aliases = ['tsv']
+    tokens = _DelimitedLexer.for_separator('\t')
+
+
 def _language(name):
     hit = _LANGUAGES.get(name, False)
     if hit is False:
         try:
-            hit = get_lexer_by_name(name, stripnl=False, ensurenl=False)
+            if name == 'csv':
+                hit = CsvLexer(stripnl=False, ensurenl=False)
+            elif name == 'tsv':
+                hit = TsvLexer(stripnl=False, ensurenl=False)
+            else:
+                hit = get_lexer_by_name(name, stripnl=False, ensurenl=False)
         except ClassNotFound:
             hit = None
         _LANGUAGES[name] = hit

@@ -545,6 +545,35 @@ def test_a_body_is_read_by_its_language():
     assert not [v for t, v in run if t in (Generic.Heading, Generic.Strong)]
 
 
+@pytest.mark.parametrize('language,body,expected', [
+    ('csv', 'Plan,Seats,Price per month\nStarter,1,"$0"\nTeam,10,"$49, billed yearly"\n',
+     [(Punctuation, ','), (String, '"$0"'), (String, '"$49, billed yearly"')]),
+    ('csv', 'a,"two\nlines",b\n',
+     [(String, '"two\nlines"'), (Punctuation, ',')]),
+    ('csv', 'a,"say ""hi""",b\n',
+     [(String.Escape, '""'), (String, 'hi')]),
+    ('tsv', 'a,b\t"two\tparts"\tc\n',
+     [(Text, '\na,b'), (String, '"two\tparts"'), (Punctuation, '\t')]),
+    ('csv', 'a,b"c,d\n',
+     [(Text, 'b"c'), (Punctuation, ',')]),
+    ('csv', 'a,"quoted"tail,b\n',
+     [(String, '"quoted"'), (Text, 'tail')]),
+    ('csv', 'a,"unfinished\nmore',
+     [(String, '"unfinished\nmore\n')]),
+])
+def test_delimited_fence_body(language, body, expected):
+    run = _body_run(DELEGATING, '```' + language + '\n' + body + '\n```\n')
+    joined = []
+    for ttype, value in run:
+        if joined and joined[-1][0] is ttype:
+            joined[-1] = (ttype, joined[-1][1] + value)
+        else:
+            joined.append((ttype, value))
+    for token in expected:
+        assert token in joined
+    assert not any(t is String.Backtick for t, _ in run)
+
+
 def test_a_callout_stays_a_callout_in_any_language():
     run = _body_run(DELEGATING, '``` js\nconst a = 1 <1>\n```\n')
     assert (Name.Constant, '<1>') in run

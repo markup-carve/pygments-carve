@@ -64,6 +64,8 @@ the highlight, and a link's text holds its own emphasis.
 
 A fence naming a language Pygments knows is highlighted in that language, and a
 raw block's `=FORMAT` names its language the same way (`=html` reads as HTML).
+`csv` and `tsv` fences use built-in rules for separators, quoted fields, and
+doubled-quote escapes.
 Code callout markers (`<1>`) and, behind a quote, each line's `>` keep their
 own scope. A language Pygments does not know, or no language, leaves the body
 verbatim. This is the `handlecodeblocks` option of Pygments' Markdown lexer,
