@@ -765,30 +765,38 @@ class _DelimitedLexer(RegexLexer):
 
     @classmethod
     def for_separator(cls, separator):
+        """Every field is typed: the header record is Generic.Strong, an
+        unquoted field String.Other, a quoted one String, `""` String.Escape."""
         escaped = re.escape(separator)
-        return {
-            'root': [
+        states = {}
+
+        def build(prefix, field, enter):
+            on_newline = lambda pops: pops + enter
+            states[prefix + 'root'] = [
                 (escaped, Punctuation),
-                (r'"', String, 'quoted'),
-                (r'\n', Text),
-                (r'[^' + escaped + r'\n"]+', Text, 'plain'),
-            ],
-            'plain': [
+                (r'"', String, prefix + 'quoted'),
+                (r'\n', Text, *enter),
+                (r'[^' + escaped + r'\n"]+', field, prefix + 'plain'),
+            ]
+            states[prefix + 'plain'] = [
                 (escaped, Punctuation, '#pop'),
-                (r'\n', Text, '#pop'),
-                (r'[^' + escaped + r'\n]+', Text),
-            ],
-            'quoted': [
+                (r'\n', Text, on_newline(('#pop',))),
+                (r'[^' + escaped + r'\n]+', field),
+            ]
+            states[prefix + 'quoted'] = [
                 (r'""', String.Escape),
-                (r'"', String, 'afterquote'),
+                (r'"', String, prefix + 'afterquote'),
                 (r'[^\"]+', String),
-            ],
-            'afterquote': [
+            ]
+            states[prefix + 'afterquote'] = [
                 (escaped, Punctuation, '#pop:2'),
-                (r'\n', Text, '#pop:2'),
-                (r'[^' + escaped + r'\n]+', Text),
-            ],
-        }
+                (r'\n', Text, on_newline(('#pop', '#pop'))),
+                (r'[^' + escaped + r'\n]+', field),
+            ]
+
+        build('', Generic.Strong, ('rowsroot',))
+        build('rows', String.Other, ())
+        return states
 
 
 class CsvLexer(_DelimitedLexer):

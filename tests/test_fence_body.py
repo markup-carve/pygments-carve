@@ -553,11 +553,11 @@ def test_a_body_is_read_by_its_language():
     ('csv', 'a,"say ""hi""",b\n',
      [(String.Escape, '""'), (String, 'hi')]),
     ('tsv', 'a,b\t"two\tparts"\tc\n',
-     [(Text, '\na,b'), (String, '"two\tparts"'), (Punctuation, '\t')]),
+     [(Generic.Strong, 'a,b'), (String, '"two\tparts"'), (Punctuation, '\t')]),
     ('csv', 'a,b"c,d\n',
-     [(Text, 'b"c'), (Punctuation, ',')]),
+     [(Generic.Strong, 'b"c'), (Punctuation, ',')]),
     ('csv', 'a,"quoted"tail,b\n',
-     [(String, '"quoted"'), (Text, 'tail')]),
+     [(String, '"quoted"'), (Generic.Strong, 'tail')]),
     ('csv', 'a,"unfinished\nmore',
      [(String, '"unfinished\nmore\n')]),
 ])
@@ -572,6 +572,17 @@ def test_delimited_fence_body(language, body, expected):
     for token in expected:
         assert token in joined
     assert not any(t is String.Backtick for t, _ in run)
+
+
+@pytest.mark.parametrize('language,body', [
+    ('csv', 'Plan,Seats\nStarter,1,"$0"\nTeam,"a""b",x"y\nz,"q"t\n'),
+    ('tsv', 'Plan\tSeats\nStarter\t1\t"$0"\n'),
+])
+def test_every_delimited_field_is_typed(language, body):
+    run = _body_run(DELEGATING, '```' + language + '\n' + body + '```\n')
+    assert (Generic.Strong, 'Plan') in run
+    assert (String.Other, 'Starter') in run and (String.Other, '1') in run
+    assert not [v for t, v in run if t is Text and v.strip()]
 
 
 def test_a_callout_stays_a_callout_in_any_language():
