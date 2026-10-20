@@ -17,7 +17,7 @@ it has to lex as text or this file goes red.
 
 import pytest
 
-from pygments.token import Generic, Keyword, Name, Punctuation
+from pygments.token import Generic, Keyword, Name, Operator, Punctuation
 
 from pygments_carve import CarveLexer
 
@@ -55,7 +55,7 @@ OTHER_CONSTRUCT = {
         (Keyword.Namespace, 'the generic container rule takes a tab; the sibling '
                             'grammars make the same trade'),
     'a lone plus is not a table continuation':
-        (Punctuation, 'a `continuation_marker`'),
+        (Operator, 'a `continuation_marker`'),
 }
 
 #: row name -> why this lexer still scopes the payload. Empty since

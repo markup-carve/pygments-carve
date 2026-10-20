@@ -90,7 +90,8 @@ BLOCK = 'block'
 INCLUDED = 'inline'
 
 CORPUS = pathlib.Path(__file__).parent.parent / 'spec' / 'tests' / 'corpus'
-DOCUMENTS = sorted(CORPUS.glob('*.crv')) if CORPUS.is_dir() else []
+LOCAL_CORPUS = pathlib.Path(__file__).parent / 'corpus-local'
+DOCUMENTS = sorted((*CORPUS.glob('*.crv'), *LOCAL_CORPUS.glob('*.crv'))) if CORPUS.is_dir() else []
 
 #: Fence bodies are read verbatim here, so what these pins hold is how a fence
 #: PAIRS, not which languages Pygments happens to know. Handing a body to its
@@ -203,10 +204,14 @@ PINS = [
         [(Punctuation, '>'), (Generic.Emph, ' quoted')]),
     Pin('task item', '- [x] done\n',
         [(Punctuation, '-'), (Name.Constant, '[x]')]),
+    Pin('bullet with first-block continuation', '- +\n',
+        [(Punctuation, '-'), (Operator, '+')]),
+    Pin('ordered item with first-block continuation', '1. +\n',
+        [(Number.Integer, '1.'), (Operator, '+')]),
     Pin('bullet', '- item\n',
         [(Punctuation, '-')]),
     Pin('continuation marker', '- a\n+\n',
-        [(Punctuation, '-'), (Punctuation, '+')],
+        [(Punctuation, '-'), (Operator, '+')],
         note='Only under an open container: a lone `+` at the start of a '
              'document, or under a table or heading, is text to the engine.'),
     Pin('ordered marker', '1. item\n',
@@ -523,21 +528,30 @@ GUARDS = [
     Guard('a task item needs content', 21, r'(?= +[ \t]*[^ \t\n])', 0,
           '- [x] \n', [(Punctuation, '-')],
           [(Punctuation, '-'), (Name.Constant, '[x]')]),
-    Guard('a bullet needs content', 22, r'(?= +[ \t]*[^ \t\n])', 0,
+    Guard('a task continuation marker ends its line', 21, r'(?=[ \t]*$)', 0,
+          '- [ ] +x\n', [(Punctuation, '-'), (Name.Constant, '[ ]')],
+          [(Punctuation, '-'), (Name.Constant, '[ ]'), (Operator, '+')]),
+    Guard('a bullet first-block continuation ends its line', 22, '$', 0,
+          '- +x\n', [(Punctuation, '-')],
+          [(Punctuation, '-'), (Operator, '+')]),
+    Guard('an ordered first-block continuation ends its line', 23, '$', 0,
+          '1. +x\n', [(Number.Integer, '1.')],
+          [(Number.Integer, '1.'), (Operator, '+')]),
+    Guard('a bullet needs content', 24, r'(?= +[ \t]*[^ \t\n])', 0,
           '- \n', [], [(Punctuation, '-')]),
-    Guard('a continuation marker is alone on its line', 23, '$', 0,
+    Guard('a continuation marker is alone on its line', 25, '$', 0,
           '- a\n+ foo\n', [(Punctuation, '-')],
-          [(Punctuation, '-'), (Punctuation, '+')]),
-    Guard('an ordered marker needs content', 24, r'(?= +[ \t]*[^ \t\n])', 0,
+          [(Punctuation, '-'), (Operator, '+')]),
+    Guard('an ordered marker needs content', 26, r'(?= +[ \t]*[^ \t\n])', 0,
           '1. \n', [], [(Number.Integer, '1.')]),
-    Guard('a bare ordinal needs content', 25, r'(?= +[ \t]*[^ \t\n])', 0,
+    Guard('a bare ordinal needs content', 27, r'(?= +[ \t]*[^ \t\n])', 0,
           '. \n', [], [(Number.Integer, '.')]),
-    Guard('a continuation row ends in a pipe', 26, r'(?=[^\n]*\|[ \t]*$)', 0,
+    Guard('a continuation row ends in a pipe', 28, r'(?=[^\n]*\|[ \t]*$)', 0,
           '| x |\n+ foo\n', [(Punctuation, '|'), (Punctuation, '|')],
           [(Punctuation, '|'), (Punctuation, '|'), (Punctuation, '+')]),
-    Guard('a header row ends in a pipe', 27, "(?=' + _ROW_END + r')", 0,
+    Guard('a header row ends in a pipe', 29, "(?=' + _ROW_END + r')", 0,
           '|= a | b\n', [], [(Operator, '|='), (Punctuation, '|')]),
-    Guard('a row ends in a pipe', 28, "(?=' + _ROW_END + r')", 0,
+    Guard('a row ends in a pipe', 30, "(?=' + _ROW_END + r')", 0,
           '| a | b\n', [], [(Punctuation, '|'), (Punctuation, '|')]),
 ]
 
@@ -813,4 +827,23 @@ PLUS_CONTEXTS = [
 def test_a_plus_line_is_markup_only_where_the_engine_reads_it(sample, markup):
     tokens = [t for t, v in LEXER.get_tokens(sample) if v == '+']
     assert tokens
-    assert all(t is (Punctuation if markup else Text) for t in tokens), tokens
+    is_bare = any(line.strip() == '+' for line in sample.splitlines())
+    expected = Operator if markup and is_bare else Punctuation if markup else Text
+    assert all(t is expected for t in tokens), tokens
+
+
+def test_task_first_block_continuation_is_an_operator():
+    source = '- [ ] +\n```sh\nnpm test\n```\n'
+    tokens = [(token, value) for token, value in LEXER.get_tokens(source) if value in ('-', '[ ]', '+')]
+    assert tokens == [(Punctuation, '-'), (Name.Constant, '[ ]'), (Operator, '+')]
+
+
+@pytest.mark.parametrize('marker, marker_token', [
+    ('-', Punctuation), ('*', Punctuation), ('1.', Number.Integer),
+    ('.', Number.Integer),
+])
+def test_list_first_block_continuation_is_an_operator(marker, marker_token):
+    source = marker + ' +\n```sh\nnpm test\n```\n'
+    tokens = [(token, value) for token, value in LEXER.get_tokens(source)
+              if value in (marker, '+')]
+    assert tokens == [(marker_token, marker), (Operator, '+')]
