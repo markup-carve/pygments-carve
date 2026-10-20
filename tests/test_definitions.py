@@ -14,7 +14,7 @@ still come out as plain content, or the fix has over-matched.
 
 import pytest
 
-from pygments.token import Generic, Name, Number, Punctuation, String, Text
+from pygments.token import Generic, Name, Number, Operator, Punctuation, String, Text
 
 from pygments_carve import CarveLexer
 
@@ -216,4 +216,4 @@ def test_a_plus_line_under_a_term_is_the_term_s_text(source):
 
 
 def test_a_lone_plus_under_a_description_is_still_a_continuation_marker():
-    assert (Punctuation, '+') in run(':: t\n: d\n+\nx\n')
+    assert (Operator, '+') in run(':: t\n: d\n+\nx\n')

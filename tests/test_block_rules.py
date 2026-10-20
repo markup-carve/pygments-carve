@@ -206,7 +206,7 @@ PINS = [
     Pin('bullet', '- item\n',
         [(Punctuation, '-')]),
     Pin('continuation marker', '- a\n+\n',
-        [(Punctuation, '-'), (Punctuation, '+')],
+        [(Punctuation, '-'), (Operator, '+')],
         note='Only under an open container: a lone `+` at the start of a '
              'document, or under a table or heading, is text to the engine.'),
     Pin('ordered marker', '1. item\n',
@@ -523,11 +523,14 @@ GUARDS = [
     Guard('a task item needs content', 21, r'(?= +[ \t]*[^ \t\n])', 0,
           '- [x] \n', [(Punctuation, '-')],
           [(Punctuation, '-'), (Name.Constant, '[x]')]),
+    Guard('a task continuation marker ends its line', 21, r'(?=[ \t]*$)', 0,
+          '- [ ] +x\n', [(Punctuation, '-'), (Name.Constant, '[ ]')],
+          [(Punctuation, '-'), (Name.Constant, '[ ]'), (Operator, '+')]),
     Guard('a bullet needs content', 22, r'(?= +[ \t]*[^ \t\n])', 0,
           '- \n', [], [(Punctuation, '-')]),
     Guard('a continuation marker is alone on its line', 23, '$', 0,
           '- a\n+ foo\n', [(Punctuation, '-')],
-          [(Punctuation, '-'), (Punctuation, '+')]),
+          [(Punctuation, '-'), (Operator, '+')]),
     Guard('an ordered marker needs content', 24, r'(?= +[ \t]*[^ \t\n])', 0,
           '1. \n', [], [(Number.Integer, '1.')]),
     Guard('a bare ordinal needs content', 25, r'(?= +[ \t]*[^ \t\n])', 0,
@@ -813,4 +816,12 @@ PLUS_CONTEXTS = [
 def test_a_plus_line_is_markup_only_where_the_engine_reads_it(sample, markup):
     tokens = [t for t, v in LEXER.get_tokens(sample) if v == '+']
     assert tokens
-    assert all(t is (Punctuation if markup else Text) for t in tokens), tokens
+    is_bare = any(line.strip() == '+' for line in sample.splitlines())
+    expected = Operator if markup and is_bare else Punctuation if markup else Text
+    assert all(t is expected for t in tokens), tokens
+
+
+def test_task_first_block_continuation_is_an_operator():
+    source = '- [ ] +\n```sh\nnpm test\n```\n'
+    tokens = [(token, value) for token, value in LEXER.get_tokens(source) if value in ('-', '[ ]', '+')]
+    assert tokens == [(Punctuation, '-'), (Name.Constant, '[ ]'), (Operator, '+')]

@@ -939,7 +939,7 @@ def _continuation_marker(lexer, match):
     decided[match.start()] = (
         attaches, _plus_attaches(match.string, match.start(), decided, blank=True))
     yield match.start(1), Text, margin
-    yield match.start(2), Punctuation if attaches else Text, plus
+    yield match.start(2), Operator if attaches else Text, plus
     yield match.start(3), Text, rest
 
 
@@ -1244,8 +1244,9 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # Task items before plain bullets, so the state marker is its own
             # token. Only a bullet takes one, and only the `task_state` set.
             (r'^(' + _MARGIN + r')([-*](?:' + _ATTRS + r')?)'
-             r'( +)(\[[ xX_>?-]\])(?= +[ \t]*[^ \t\n])',
-             bygroups(Text, Punctuation, Text, Name.Constant)),
+             r'( +)(\[[ xX_>?-]\])(?= +[ \t]*[^ \t\n])'
+             r'(?:( +)(\+)(?=[ \t]*$))?',
+             bygroups(Text, Punctuation, Text, Name.Constant, Text, Operator)),
 
             # Bullets. A run of markers on one line opens nested lists at once
             # (`- - A`), and attributes may be glued straight onto the marker.
