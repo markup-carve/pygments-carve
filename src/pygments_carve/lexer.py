@@ -1248,6 +1248,11 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
              r'(?:( +)(\+)(?=[ \t]*$))?',
              bygroups(Text, Punctuation, Text, Name.Constant, Text, Operator)),
 
+            (r'^(' + _MARGIN + r')((?:[-*] +)*[-*](?:' + _ATTRS + r')?)( +)(\+)([ \t]*)$',
+             bygroups(Text, Punctuation, Text, Operator, Text)),
+            (r'^(' + _MARGIN + r')(' + _ORDINAL + r'[.)](?:' + _ATTRS + r')?|\.(?:' + _ATTRS + r')?)( +)(\+)([ \t]*)$',
+             bygroups(Text, Number.Integer, Text, Operator, Text)),
+
             # Bullets. A run of markers on one line opens nested lists at once
             # (`- - A`), and attributes may be glued straight onto the marker.
             # `+` is not a bullet: `+ foo` is a paragraph. Every list marker
