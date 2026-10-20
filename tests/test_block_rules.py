@@ -90,7 +90,8 @@ BLOCK = 'block'
 INCLUDED = 'inline'
 
 CORPUS = pathlib.Path(__file__).parent.parent / 'spec' / 'tests' / 'corpus'
-DOCUMENTS = sorted(CORPUS.glob('*.crv')) if CORPUS.is_dir() else []
+LOCAL_CORPUS = pathlib.Path(__file__).parent / 'corpus-local'
+DOCUMENTS = sorted((*CORPUS.glob('*.crv'), *LOCAL_CORPUS.glob('*.crv'))) if CORPUS.is_dir() else []
 
 #: Fence bodies are read verbatim here, so what these pins hold is how a fence
 #: PAIRS, not which languages Pygments happens to know. Handing a body to its
