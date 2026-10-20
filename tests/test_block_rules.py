@@ -847,3 +847,25 @@ def test_list_first_block_continuation_is_an_operator(marker, marker_token):
     tokens = [(token, value) for token, value in LEXER.get_tokens(source)
               if value in (marker, '+')]
     assert tokens == [(marker_token, marker), (Operator, '+')]
+
+
+@pytest.mark.parametrize('sample, expected', [
+    ('- a\n+\n', Punctuation),
+    ('- a\n  - b\n  +\n  more\n', Text),
+    ('- a\n  +\n', Text),
+    ('  +\n', Text),
+    ('- +\n', Punctuation),
+    ('1. +\n', Punctuation),
+    ('> +\n', Punctuation),
+    ('> > +\n', Punctuation),
+    ('- - +\n', Punctuation),
+    (':: t\n: +\n', Punctuation),
+    ('[^a]: +\n', Punctuation),
+])
+def test_continuation_marker_position(sample, expected):
+    assert [t for t, v in LEXER.get_tokens(sample) if v == '+'] == [expected]
+
+
+def test_plus_inside_code_fence_is_code():
+    tokens = [(t, v) for t, v in LEXER.get_tokens('```\n+\n```\n') if '+' in v]
+    assert tokens == [(String.Backtick, '+\n')]

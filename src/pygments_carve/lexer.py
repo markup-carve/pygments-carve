@@ -197,7 +197,7 @@ _PARAGRAPH_START = (r'(?:\A|(?<=\n\n))(?=[^ \t\n])'
 #: `- # H`, `: - item`. The rest of the line is then lexed as a block of its own.
 _NESTED = (
     r'(?:#{1,6}[ \t]|>(?=[ \t]|$)|`{3,}|~{3,}|:{3,}|\|(?=[^\n]*\|[ \t]*$)'
-    r'|(?:[-*]|' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?(?= +[ \t]*[^ \t\n]))'
+    r'|\+(?=[ \t]*$)|(?:[-*]|' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?(?= +[ \t]*[^ \t\n]))'
 )
 _NESTED_TAIL = r'(?:([ \t]+)(?=' + _NESTED + r')([^\n]*))?'
 
@@ -1239,7 +1239,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # line; `>foo` is a paragraph. A block after the marker is lexed as
             # one (`_NESTED_TAIL`), as it is after a list marker below.
             (r'^(' + _MARGIN + r')(>+)(?=[ \t]|$)' + _NESTED_TAIL,
-             bygroups(Text, Punctuation, Text, using(this, state='root')), 'quoteline'),
+             bygroups(Text, Punctuation, Text, using(this, state='nested')), 'quoteline'),
 
             # Task items before plain bullets, so the state marker is its own
             # token. Only a bullet takes one, and only the `task_state` set.
@@ -1259,18 +1259,18 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # needs a space and then content.
             (r'^(' + _MARGIN + r')((?:[-*] +)*[-*](?:' + _ATTRS + r')?)(?= +[ \t]*[^ \t\n])'
              + _NESTED_TAIL,
-             bygroups(Text, Punctuation, Text, using(this, state='root'))),
-            # A lone `+` is a `continuation_marker` only under an open container.
-            (r'^(' + _MARGIN + r')(\+)([ \t]*)$', _continuation_marker),
+             bygroups(Text, Punctuation, Text, using(this, state='nested'))),
+            # A lone `+` is a marker only at column zero under an open container.
+            (r'^()(\+)([ \t]*)$', _continuation_marker),
 
             # Ordered markers: numeric, alphabetic, roman, and the bare `.` that
             # continues the enclosing sequence. Any of them may carry glued
             # attributes.
             (r'^(' + _MARGIN + r')(' + _ORDINAL + r'[.)](?:' + _ATTRS + r')?)(?= +[ \t]*[^ \t\n])'
              + _NESTED_TAIL,
-             bygroups(Text, Number.Integer, Text, using(this, state='root'))),
+             bygroups(Text, Number.Integer, Text, using(this, state='nested'))),
             (r'^(' + _MARGIN + r')(\.(?:' + _ATTRS + r')?)(?= +[ \t]*[^ \t\n])' + _NESTED_TAIL,
-             bygroups(Text, Number.Integer, Text, using(this, state='root'))),
+             bygroups(Text, Number.Integer, Text, using(this, state='nested'))),
 
             # Tables. The header marker, the alignment run and the separator row
             # are their own tokens; cell content is lexed inline.
@@ -1314,7 +1314,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
                      using(this, state='fencelang'), using(this, state='infostring'),
                      Text, _BODY, Text, Punctuation, Text)),
             (r'^(' + _MARGIN + r')(:)(?= +[ \t]*[^ \t\n])' + _NESTED_TAIL,
-             bygroups(Text, Punctuation, Text, using(this, state='root'))),
+             bygroups(Text, Punctuation, Text, using(this, state='nested'))),
             include('block'),
         ],
 
@@ -1408,6 +1408,11 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'[^\n|]', Text),
         ],
 
+        'nested': [
+            (r'^\+(?=[ \t]*$)', Punctuation),
+            include('block'),
+        ],
+
         # The marker run a definition line may carry, tokenized the way the
         # marker rules in `block` tokenize the same markers on their own.
         'markerrun': [
@@ -1421,6 +1426,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
         # A definition's body: inline content that ends with its line.
         'defbody': [
             (r'$', Text, '#pop'),
+            (r'(?<=\]: )\+(?=[ \t]*$)', Punctuation),
             include('inline'),
         ],
 

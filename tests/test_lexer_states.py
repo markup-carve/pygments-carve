@@ -55,7 +55,7 @@ USING_STATES = {
     'fencelang': 'its group is a single line by construction',
     # The rest of a container's marker line, read as a block of its own
     # (`- # H`): `_NESTED_TAIL` takes it up to the line end only.
-    'root': 'its group is a single line by construction',
+    'nested': 'its group is a single line by construction',
     # The content of an emphasis span, lexed as inline content. A span may
     # cross a line of its paragraph, so each ends in a rule taking a newline.
     'strong': 'spans lines, and its last rule takes a newline',
