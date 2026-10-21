@@ -387,3 +387,29 @@ _CODE_RUNS = {
 def test_a_code_span_closes_on_a_run_of_its_own_width(name):
     sample, expected = _CODE_RUNS[name]
     assert scoped_run(LEXER, sample) == expected
+
+
+# An attribute block attaches only to a span, link or image closer. After plain
+# brackets the engine renders `{...}` as text.
+_BRACKET_ATTRS = {
+    '[x]{.c}': True,
+    'x]{.c}': True,
+    '\\\\[x]{.c}': True,
+    '[a \\[x]{.c}': True,
+    '[x](u){.c}': True,
+    '[x](a(b(c)d)e){.c}': True,
+    '\\![a](i){.c}': True,
+    '\\[x]{.c}': False,
+    '\\[x\\]{.c}': False,
+    '\\[x](u){.c}': False,
+    'x\\](u){.c}': False,
+    '(a){.c}': False,
+    'f(u){.c}': False,
+    'see (note){.c}': False,
+}
+
+
+@pytest.mark.parametrize('sample', sorted(_BRACKET_ATTRS))
+def test_an_attribute_block_needs_a_span_or_link_closer(sample):
+    tokens = [t for _, t, v in LEXER.get_tokens_unprocessed(sample) if v == '{.c}']
+    assert (tokens == [Name.Attribute]) is _BRACKET_ATTRS[sample], tokens
