@@ -953,7 +953,7 @@ def _unquote(line, depth):
         while at < len(line) and line[at] in ' \t' and col < 3:
             col = col + 4 - col % 4 if line[at] == '\t' else col + 1
             at += 1
-        if at >= len(line) or line[at] != '>':
+        if at >= len(line) or line[at] != '>' or line[at + 1:at + 2] not in ('', ' '):
             return None
         at, col = at + 1, col + 1
         if at < len(line) and line[at] in ' \t':
@@ -1075,8 +1075,7 @@ def _plus_reading(lines, seen, row, plus_at, depth):
     container's marker column, and the next line starts a block at that same
     column; a list item there is a sibling, and leaves the `+` as text, only
     when that container is a list item. Right behind open quote prefixes carve-js
-    takes no quote as that block, and a `+` glued to the prefix (`>+`)
-    attaches to a list item only.
+    takes no quote as that block.
     """
     key = ('plus', row, depth)
     if key in seen:
@@ -1088,9 +1087,7 @@ def _plus_reading(lines, seen, row, plus_at, depth):
         return False
     at, base = stripped
     column = _columns(line, at, base)[plus_at - at] - base
-    glued = depth and line[plus_at - 1] == '>'
-    kinds = {kind for c, kind in _open_columns(lines, row, depth, seen)
-             if c == column and (kind == 'item' or not glued)}
+    kinds = {kind for c, kind in _open_columns(lines, row, depth, seen) if c == column}
     if not kinds:
         return False
     if row + 1 >= len(lines):
@@ -1099,7 +1096,7 @@ def _plus_reading(lines, seen, row, plus_at, depth):
     if follower is None or follower[1] is None or follower[0] != column:
         return False
     first = follower[1][0] if follower[1] else None
-    attaches = not ('item' in kinds and first == (column, 'item')) and not (depth and not glued and first == (0, 'quote'))
+    attaches = not ('item' in kinds and first == (column, 'item')) and not (depth and first == (0, 'quote'))
     seen[key] = attaches
     return attaches
 
@@ -1534,12 +1531,13 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'^(' + _MARGIN + r')(::)( +[ \t]*)(?=[^ \t\n])',
              bygroups(Text, Punctuation, Text), ('deflist', 'termtail', 'heading')),
 
-            # A `+` alone behind quote prefixes is read by its column.
-            (r'^(' + _MARGIN + r')((?:>[ \t]*)+)(\+)([ \t]*)$', _quoted_plus),
+            # A `+` alone behind quote prefixes is read by its column. Each `>`
+            # needs a space after it: `>+`, `>>+` and `>> +` are paragraph text.
+            (r'^(' + _MARGIN + r')((?:> [ \t]*)+)(\+)([ \t]*)$', _quoted_plus),
             # Blockquote marker. A marker must be followed by a space or end the
-            # line; `>foo` is a paragraph. A block after the marker is lexed as
+            # line; `>foo`, `>\tq` and `>> q` are paragraphs. A block after the marker is lexed as
             # one (`_NESTED_TAIL`), as it is after a list marker below.
-            (r'^(' + _MARGIN + r')(>+)(?=[ \t]|$)' + _NESTED_TAIL,
+            (r'^(' + _MARGIN + r')(>)(?= |$)' + _NESTED_TAIL,
              bygroups(Text, Punctuation, Text, using(this, state='nested')), 'quoteline'),
 
             # Task items before plain bullets, so the state marker is its own
