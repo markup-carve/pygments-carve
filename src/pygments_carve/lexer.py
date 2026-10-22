@@ -1012,6 +1012,8 @@ def _open_columns(lines, row, depth, seen):
             found += [(c, kind) for c, kind in seen[j, depth]
                       if c < ceiling and (kind == 'item' or not blank)]
             break
+    # Unique: a row inherits its neighbor's list, which must not grow per row.
+    found = list(dict.fromkeys(found))
     seen[row, depth] = found
     return found
 
