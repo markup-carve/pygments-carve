@@ -285,7 +285,7 @@ def test_a_braced_en_dash_opens_no_span():
     expect = ((Punctuation, '*'), (Generic.Strong, 'a '), (Punctuation, '{--}'),
               (Generic.Strong, ' b'), (Punctuation, '*'))
     assert scoped_run(LEXER, sample) == expect
-    _sharp(_mutant(("r'\\{--\\}|\\{#|\\{%|%%'", "r'\\{#|\\{%|%%'")), [(sample, expect)])
+    _sharp(_mutant(("r'\\{--\\}|\\{[#%]'", "r'\\{[#%]'")), [(sample, expect)])
 
 
 def test_pairing_from_the_last_opener_is_what_nests_them():

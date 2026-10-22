@@ -42,6 +42,7 @@ Spec: https://markup-carve.github.io/carve/
 
 import bisect
 import re
+import unicodedata
 
 from pygments.lexer import (
     RegexLexer,
@@ -206,6 +207,31 @@ _NESTED_TAIL = r'(?:([ \t]+)(?=' + _NESTED + r')([^\n]*))?'
 #: matches U+001C-U+001F, which are destination characters.
 _WHITE_SPACE = '\t\n\x0b\x0c\r \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000'
 _LINE_SPACE = _WHITE_SPACE.replace('\n', '')
+
+
+def _extender_class():
+    """Mn, Mc and Me, the variation selectors U+FE00-U+FE0F and U+200D, as a
+    character class. Marks exist only in planes 0, 1 and 14."""
+    ranges, start, last = [], None, None
+    for plane in (range(0x300, 0x20000), range(0xE0000, 0xE1000)):
+        for cp in plane:
+            if (unicodedata.category(chr(cp)) in ('Mn', 'Mc', 'Me')
+                    or 0xFE00 <= cp <= 0xFE0F or cp == 0x200D):
+                if last is not None and cp == last + 1:
+                    last = cp
+                    continue
+                if start is not None:
+                    ranges.append((start, last))
+                start = last = cp
+    ranges.append((start, last))
+    return '[' + ''.join(chr(a) if a == b else chr(a) + '-' + chr(b) for a, b in ranges) + ']'
+
+
+#: A delimiter followed by one of these is the first code point of a larger
+#: character and neither opens nor closes (CARVE-P3-025): the keycap `*`
+#: U+FE0F U+20E3 is text. It follows each bare opener and closer, the delimiter
+#: of every braced opener, and the `*` of `/*`.
+_WHOLE = '(?!' + _extender_class() + ')'
 
 
 #: Characters that can begin an inline construct. A run of anything else is
@@ -620,7 +646,7 @@ def _masks(text, unclosed):
 
 
 #: A braced opener, and the closer of each kind.
-_BRACED_OPENER = re.compile(r'\{([*/_~^,=+-])')
+_BRACED_OPENER = re.compile(r'\{([*/_~^,=+-])' + _WHOLE)
 _BRACED_CLOSER = re.compile(r'([*/_~^,=+-])\}')
 
 
@@ -697,7 +723,7 @@ def _comment_spans(text):
     """
     mask_starts, mask_ends = _masks(text, False)
     spans, reach = [], 0
-    for m in re.finditer(r'\{--\}|\{#|\{%|%%', text):
+    for m in re.finditer(r'\{--\}|\{[#%]' + _WHOLE + r'|%%', text):
         at = m.start()
         if at < reach:
             continue
@@ -1840,31 +1866,31 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
 
             # CriticMarkup substitution and comment, before the forced family:
             # `{~old~>new~}` also matches the forced-strike shape.
-            (_Scan(r'(\{~)', r'([\s\S]*?)(~>)([\s\S]*?)(~\})', (r'~>', r'~\}'), masked='critic', reach='block'),
+            (_Scan(r'(\{~)' + _WHOLE, r'([\s\S]*?)(~>)([\s\S]*?)(~\})', (r'~>', r'~\}'), masked='critic', reach='block'),
              bygroups(Punctuation, using(this, state='deleted'), Operator, using(this, state='inserted'),
                       Punctuation)),
-            (_Scan(r'(\{#)', r'([^\n]*?)(#\})', r'#\}'), bygroups(Punctuation, Comment, Punctuation)),
+            (_Scan(r'(\{#)' + _WHOLE, r'([^\n]*?)(#\})', r'#\}'), bygroups(Punctuation, Comment, Punctuation)),
 
             # The braced FORCED emphasis family. Braces make a delimiter apply
             # where the bare form would not - `my{_path_}name` is underline
             # inside a word - so the content is emphasis and the braces are its
             # delimiters, not an attribute block.
-            (_Braced(r'(\{\*)', r'([\s\S]+?)(\*\})'), bygroups(Punctuation, using(this, state='forcedstrong'), Punctuation)),
-            (_Braced(r'(\{/)', r'([\s\S]+?)(/\})'), bygroups(Punctuation, using(this, state='forcedemph'), Punctuation)),
-            (_Braced(r'(\{_)', r'([\s\S]+?)(_\})'), bygroups(Punctuation, using(this, state='forcedunderline'), Punctuation)),
-            (_Braced(r'(\{~)', r'([\s\S]+?)(~\})'), bygroups(Punctuation, using(this, state='forceddeleted'), Punctuation)),
+            (_Braced(r'(\{\*)' + _WHOLE, r'([\s\S]+?)(\*\})'), bygroups(Punctuation, using(this, state='forcedstrong'), Punctuation)),
+            (_Braced(r'(\{/)' + _WHOLE, r'([\s\S]+?)(/\})'), bygroups(Punctuation, using(this, state='forcedemph'), Punctuation)),
+            (_Braced(r'(\{_)' + _WHOLE, r'([\s\S]+?)(_\})'), bygroups(Punctuation, using(this, state='forcedunderline'), Punctuation)),
+            (_Braced(r'(\{~)' + _WHOLE, r'([\s\S]+?)(~\})'), bygroups(Punctuation, using(this, state='forceddeleted'), Punctuation)),
 
             # Braced inline families. Sup and sub are braced-only in Carve: a
             # bare `^x^` or `,x,` is literal text.
-            (_Braced(r'(\{\^)', r'([\s\S]+?)(\^\})'), bygroups(Punctuation, using(this, state='emph'), Punctuation)),
-            (_Braced(r'(\{,)', r'([\s\S]+?)(,\})'), bygroups(Punctuation, using(this, state='emph'), Punctuation)),
-            (_Braced(r'(\{=)', r'([\s\S]+?)(=\})'), bygroups(Punctuation, using(this, state='forcedinserted'), Punctuation)),
-            (_Braced(r'(\{\+)', r'([\s\S]+?)(\+\})'), bygroups(Punctuation, using(this, state='inserted'), Punctuation)),
+            (_Braced(r'(\{\^)' + _WHOLE, r'([\s\S]+?)(\^\})'), bygroups(Punctuation, using(this, state='emph'), Punctuation)),
+            (_Braced(r'(\{,)' + _WHOLE, r'([\s\S]+?)(,\})'), bygroups(Punctuation, using(this, state='emph'), Punctuation)),
+            (_Braced(r'(\{=)' + _WHOLE, r'([\s\S]+?)(=\})'), bygroups(Punctuation, using(this, state='forcedinserted'), Punctuation)),
+            (_Braced(r'(\{\+)' + _WHOLE, r'([\s\S]+?)(\+\})'), bygroups(Punctuation, using(this, state='inserted'), Punctuation)),
             # The braced en dash. A deletion needs content, so `{--}` is never
             # one, and `{--}x-}` is a dash followed by text, not a deletion.
             (r'\{--\}', Punctuation),
-            (_Braced(r'(\{-)', r'([\s\S]+?)(-\})'), bygroups(Punctuation, using(this, state='deleted'), Punctuation)),
-            (_Scan(r'(\{%)', r'([\s\S]*?)(%\})', r'%\}', reach='block'), bygroups(Comment.Preproc, Comment, Comment.Preproc)),
+            (_Braced(r'(\{-)' + _WHOLE, r'([\s\S]+?)(-\})'), bygroups(Punctuation, using(this, state='deleted'), Punctuation)),
+            (_Scan(r'(\{%)' + _WHOLE, r'([\s\S]*?)(%\})', r'%\}', reach='block'), bygroups(Comment.Preproc, Comment, Comment.Preproc)),
 
             # An inline footnote carries content; a reference carries a label.
             # Each opens only where a `]` lies ahead in its paragraph: an unclosed
@@ -1939,22 +1965,23 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # OUTER `/`; the inner `*` is part of the two-char token". A space
             # after the opener or before the closer leaves an italic holding
             # literal asterisks: `a /* b */ c` is `<em>* b *</em>`.
-            (_Scan(r'(?<![\w/])(/\*)(?!\s)', r'([\s\S]+?)(?<!\s)(\*/)(?![^\W_])',
-                   r'(?<!\s)\*/(?![^\W_])', least=1, masked='bare', reach='block'),
+            (_Scan(r'(?<![\w/])(/\*)(?!\s)' + _WHOLE, r'([\s\S]+?)(?<!\s)(\*/)(?![^\W_])' + _WHOLE,
+                   r'(?<!\s)\*/(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
              bygroups(Punctuation, using(this, state='strong'), Punctuation)),
-            (_Scan(r'(?<![\w*])(\*/)', r'([\s\S]+?)(/\*)(?![^\W_])', r'/\*(?![^\W_])', least=1, masked='bare', reach='block'),
+            (_Scan(r'(?<![\w*])(\*/)' + _WHOLE, r'([\s\S]+?)(/\*)(?![^\W_])' + _WHOLE, r'/\*(?![^\W_])' + _WHOLE,
+                   least=1, masked='bare', reach='block'),
              bygroups(Punctuation, using(this, state='strong'), Punctuation)),
-            (_Scan(r'(?<![\w*])(\*)(?!\*)', r'(\S(?:[\s\S]*?\S)?)(\*)(?![^\W_])',
-                   r'(?<=\S)\*(?![^\W_])', least=1, masked='bare', reach='block'),
+            (_Scan(r'(?<![\w*])(\*)(?!\*)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(\*)(?![^\W_])' + _WHOLE,
+                   r'(?<=\S)\*(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
              bygroups(Punctuation, using(this, state='strong'), Punctuation)),
-            (_Scan(r'(?<![\w/])(/)(?!/)', r'(\S(?:[\s\S]*?\S)?)(/)(?![^\W_])',
-                   r'(?<=\S)/(?![^\W_])', least=1, masked='bare', reach='block'),
+            (_Scan(r'(?<![\w/])(/)(?!/)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(/)(?![^\W_])' + _WHOLE,
+                   r'(?<=\S)/(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
              bygroups(Punctuation, using(this, state='emph'), Punctuation)),
-            (_Scan(r'(?<![\w/])(_)(?!_)', r'(\S(?:[\s\S]*?\S)?)(_)(?![^\W_])',
-                   r'(?<=\S)_(?![^\W_])', least=1, masked='bare', reach='block'),
+            (_Scan(r'(?<![\w/])(_)(?!_)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(_)(?![^\W_])' + _WHOLE,
+                   r'(?<=\S)_(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
              bygroups(Punctuation, using(this, state='underline'), Punctuation)),
-            (_Scan(r'(?<![\w~])(~)(?!~)', r'(\S(?:[\s\S]*?\S)?)(~)(?![^\W_])',
-                   r'(?<=\S)~(?![^\W_])', least=1, masked='bare', reach='block'),
+            (_Scan(r'(?<![\w~])(~)(?!~)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(~)(?![^\W_])' + _WHOLE,
+                   r'(?<=\S)~(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
              bygroups(Punctuation, using(this, state='deleted'), Punctuation)),
             # A bare `=` carrying a comparison or an arrow tail on its left is
             # not a highlight delimiter: PART 9's inline precedence excepts "a
@@ -1967,8 +1994,8 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # `x =y z≤ w`, no mark at all. Nothing is guarded on the RIGHT,
             # also from the engine - `=>` is not an arrow any more, so
             # `a =foo=> b` marks `foo` and `a =>foo= b` marks `>foo`.
-            (_Scan(r'(?<![\w=<>!])(=)(?!=)', r'(\S(?:[\s\S]*?\S)?)(?<![<>!])(=)(?![^\W_])',
-                   r'(?<=\S)(?<![<>!])=(?![^\W_])', least=1, masked='bare', reach='block'),
+            (_Scan(r'(?<![\w=<>!])(=)(?!=)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(?<![<>!])(=)(?![^\W_])' + _WHOLE,
+                   r'(?<=\S)(?<![<>!])=(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
              bygroups(Punctuation, using(this, state='inserted'), Punctuation)),
 
             # A mention and a tag, each one token: the sigil is part of the name
