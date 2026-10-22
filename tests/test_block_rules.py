@@ -533,7 +533,7 @@ GUARDS = [
     Guard('a quoted continuation marker is alone on its line', 20, '$', 0,
           '> +x\nflush\n', [(Punctuation, '>'), (Generic.Emph, ' '), (Generic.Emph, '+'), (Generic.Emph, 'x')],
           [(Punctuation, '>'), (Operator, '+')]),
-    Guard('a blockquote marker needs a space after it', 21, r'(?=[ \t]|$)', 0,
+    Guard('a blockquote marker needs a space after it', 21, r'(?= |$)', 0,
           '>foo\n', [], [(Punctuation, '>'), (Generic.Emph, 'foo')]),
     Guard('a task item needs content', 22, r'(?= +[ \t]*[^ \t\n])', 0,
           '- [x] \n', [(Punctuation, '-')],
@@ -891,8 +891,8 @@ def test_list_first_block_continuation_is_an_operator(marker, marker_token):
     ('1. +\n', Operator),
     ('> +\nflush\n', Operator),
     ('> > +\n> b\n', Operator),
-    ('>+\nq\n', Operator),
-    ('>>+\nq\n', Operator),
+    ('>+\nq\n', Text),
+    ('>>+\nq\n', Text),
     ('  > +\nq\n', Text),
     ('- - +\npara\n', Operator),
     ('- - [ ] +\n> q\n', Operator),
@@ -916,7 +916,7 @@ def test_list_first_block_continuation_is_an_operator(marker, marker_token):
     ('- a\n  > +\nq\n', Operator),
     ('- a\n  > +\n    q\n', Text),
     ('> > q\n>+\n> para\n', Text),
-    ('> - a\n>+\n> > r\n', Operator),
+    ('> - a\n>+\n> > r\n', Text),
     ('> - a\n> +\n> > r\n', Text),
     ('> > q\n>\n> +\n> para\n', Text),
     ('> - a\n>   - b\n>   +\n>   > q\n', Operator),
@@ -940,3 +940,28 @@ def test_a_second_plus_under_the_same_item(sample):
 def test_plus_inside_code_fence_is_code():
     tokens = [(t, v) for t, v in LEXER.get_tokens('```\n+\n```\n') if '+' in v]
     assert tokens == [(String.Backtick, '+\n')]
+
+
+# A marker after quote prefixes needs a space after each `>` (ruling on
+# markup-carve/carve#3421): `>+`, `>>+` and `>> +` are paragraph text, and
+# `> >+` is a quote holding the text `>+`.
+@pytest.mark.parametrize('sample, expected', [
+    ('> - a\n>\n>+\n> b\n', [(Punctuation, '>'), (Punctuation, '-'), (Text, 'a'), (Punctuation, '>'),
+                              (Text, '>'), (Text, '+'), (Punctuation, '>'), (Generic.Emph, ' b')]),
+    ('> > - a\n> >\n>>+\n', [(Punctuation, '>'), (Punctuation, '>'), (Punctuation, '-'), (Text, 'a'),
+                             (Punctuation, '>'), (Punctuation, '>'), (Text, '>'), (Text, '>'), (Text, '+')]),
+    ('> > - a\n> >\n>> +\n', [(Punctuation, '>'), (Punctuation, '>'), (Punctuation, '-'), (Text, 'a'),
+                              (Punctuation, '>'), (Punctuation, '>'), (Text, '>'), (Text, '>'), (Text, '+')]),
+    ('> > - a\n> >\n> >+\n', [(Punctuation, '>'), (Punctuation, '>'), (Punctuation, '-'), (Text, 'a'),
+                              (Punctuation, '>'), (Punctuation, '>'), (Punctuation, '>'),
+                              (Generic.Emph, '>'), (Generic.Emph, '+')]),
+    ('> - a\n>\n> +\n> b\n', [(Punctuation, '>'), (Punctuation, '-'), (Text, 'a'), (Punctuation, '>'),
+                               (Punctuation, '>'), (Operator, '+'), (Punctuation, '>'), (Generic.Emph, ' b')]),
+    ('> > - a\n> >\n> > +\n> > b\n', [(Punctuation, '>'), (Punctuation, '>'), (Punctuation, '-'), (Text, 'a'),
+                                     (Punctuation, '>'), (Punctuation, '>'), (Punctuation, '>'), (Punctuation, '>'),
+                                     (Operator, '+'), (Punctuation, '>'), (Punctuation, '>'), (Generic.Emph, ' b')]),
+    ('> - a\n>\n>\t+\n> b\n', [(Punctuation, '>'), (Punctuation, '-'), (Text, 'a'), (Punctuation, '>'),
+                                (Text, '>'), (Text, '+'), (Punctuation, '>'), (Generic.Emph, ' b')]),
+], ids=['>+', '>>+', '>> +', '> >+', '> +', '> > +', '>tab+'])
+def test_quote_prefix_needs_a_space_before_the_marker(sample, expected):
+    assert [(t, v) for t, v in LEXER.get_tokens(sample) if v.strip()] == expected
