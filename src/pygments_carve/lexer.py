@@ -1166,6 +1166,56 @@ def _continuation_row(lexer, match):
         yield match.start(3) + index, token, value
 
 
+def _escaped(text, at):
+    """Whether the character at `at` follows an odd run of backslashes."""
+    run = 0
+    while at - run > 0 and text[at - run - 1] == '\\':
+        run += 1
+    return run % 2 == 1
+
+
+def _bracket_closers(text, start):
+    """Which `]` and `)` on the line at `start` may take an attribute block.
+
+    Only a span, link or image closer takes one. A `]` closes the nearest open
+    unescaped `[`; with none open it attaches unless an escaped `\\[` stands
+    unclosed before it, since a span may have opened on an earlier line. A `)`
+    must close a link destination, so its `(` follows such a `]`. One forward
+    pass, so a line costs linear time however many blocks it holds.
+    """
+    end = text.find('\n', start)
+    end = len(text) if end < 0 else end
+    closers = {}
+    brackets = []
+    parens = []
+    escaped_opener = False
+    for i in range(start, end):
+        c = text[i]
+        if c not in '[]()':
+            continue
+        if _escaped(text, i):
+            if c == '[' and not brackets:
+                escaped_opener = True
+            continue
+        if c == '[':
+            brackets.append(i)
+        elif c == ']':
+            if brackets:
+                brackets.pop()
+                closers[i] = True
+            else:
+                closers[i] = not escaped_opener
+                escaped_opener = False
+        elif c == '(':
+            parens.append(i)
+        elif parens:
+            o = parens.pop()
+            closers[i] = o > start and closers.get(o - 1, False) and text[o - 1] == ']'
+        else:
+            closers[i] = False
+    return closers
+
+
 class _ScanMeta(RegexLexerMeta):
     """Compiles a `_Scan` rule to its matcher and every other rule as Pygments does."""
 
@@ -1214,6 +1264,23 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
         # The Markdown lexer's option, with its default: a fence naming a
         # language Pygments knows is highlighted in that language.
         self.handlecodeblocks = get_bool_opt(options, 'handlecodeblocks', True)
+
+    def get_tokens_unprocessed(self, text, stack=('root',)):
+        # The inline attribute rule matches `{...}` anywhere; after plain
+        # brackets such as `(a){.c}` or `\[x]{.c}` the engine keeps it as text.
+        start = end = -1
+        closers = {}
+        for index, token, value in super().get_tokens_unprocessed(text, stack):
+            if (token is Name.Attribute and index and value.startswith('{')
+                    and text[index - 1] in ')]'):
+                if not start <= index - 1 < end:
+                    start = text.rfind('\n', 0, index) + 1
+                    end = text.find('\n', index)
+                    end = len(text) if end < 0 else end
+                    closers = _bracket_closers(text, start)
+                if not closers.get(index - 1, False):
+                    token = Text
+            yield index, token, value
 
     tokens = {
         'root': [
