@@ -262,6 +262,11 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
     as blocks: `276-*-5`, `455-*-2`, `519-*-2` and the two `535-*` entries
     hold a fence or a marker behind `>`, `-` or `:`, which the container
     rules now take before the inline state sees the delimiters.
+
+    The `595-*-2` entry and the four `600-*` entries arrived with the bump to
+    carve 99906e2, all new documents. carve-js main renders each one as its
+    corpus HTML, and the guarded lexer reports zero on them; the `600-*` ones
+    hold a delimiter followed by a combining mark or a keycap.
     """
     hits = sorted(p.stem for p in DOCUMENTS
                   if _case(p)[1] is not None
@@ -293,6 +298,11 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         'e-pairs-2',
         '484-a-delimiter-after-an-underscore-or-slash-opens-only-when-that-on'
         'e-pairs-6',
+        '595-a-bare-closer-does-not-reach-inside-a-cross-reference-2',
+        '600-a-delimiter-that-is-part-of-a-larger-character-is-text',
+        '600-a-delimiter-that-is-part-of-a-larger-character-is-text-14',
+        '600-a-delimiter-that-is-part-of-a-larger-character-is-text-2',
+        '600-a-delimiter-that-is-part-of-a-larger-character-is-text-7',
         '76-doubled-emphasis-delimiters',
         '79-two-char-delimiter-runs',
     ], hits
