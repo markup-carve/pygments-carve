@@ -394,7 +394,9 @@ def test_the_corpus_reads_the_two_rules_the_ticket_was_filed_on():
     blunt. The `553-*` entry arrived with markup-carve/carve#2890: a break two
     list levels deep, followed by a column-0 line. The `556-*` and `566-*`
     entries arrived with the bump to carve 21879d7, each a `---` at a list
-    item's content column; no document already in the corpus moved.
+    item's content column; no document already in the corpus moved. The
+    `616-*-16` entry arrived with the bump to carve 99906e2, a new document
+    that carve-js main renders as its corpus HTML.
     """
     assert sorted(_changed(MUTANTS[_rule('dash thematic break')])) == [
         '249-trailing-whitespace-after-a-block-marker',
@@ -406,6 +408,7 @@ def test_the_corpus_reads_the_two_rules_the_ticket_was_filed_on():
         '3',
         '556-a-closed-block-leaves-no-frame-for-the-line-below-2',
         '566-an-opener-past-a-hosted-container-s-column-opens-there-5',
+        '616-a-line-is-read-in-the-container-whose-column-it-reaches-16',
     ]
     assert len(_changed(DEFLIST_MUTANTS[_deflist_rule('description')],
                         limit=51)) == 51

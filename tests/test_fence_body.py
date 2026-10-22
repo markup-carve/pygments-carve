@@ -265,7 +265,7 @@ def test_the_corpus_has_fenced_bodies_to_measure():
 
 @corpus
 def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
-    """The zero above is only meaningful if this gate can reach a hundred and thirty-three.
+    """The zero above is only meaningful if this gate can reach a hundred and seventy-five.
 
     Run over the same 2223 documents, the pre-#32 rule shape leaves live Carve
     markup inside a fenced body in all but one document that holds one - the
@@ -293,10 +293,15 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     over the 2322 documents at 2d473af7, 133 over the 2508 at 21879d7. All
     twenty-five are new documents from the fence-in-a-container sections 556
     to 592, and no document already in the corpus changed its verdict.
+
+    The bump to carve 99906e2 adds forty-two, measured the same way: 133 hits
+    over the 2508 documents at 1a75124, 175 over the 2974 at 99906e2. All
+    forty-two are new documents, carve-js main renders each as its corpus
+    HTML, and no document already in the corpus changed its verdict.
     """
     hits = [p.name for p in DOCUMENTS
             if _non_verbatim(REGRESSION, p.read_text(encoding='utf-8'))]
-    assert len(hits) == 133, len(hits)
+    assert len(hits) == 175, len(hits)
 
 
 # ----------------------------------------------------------------------------
@@ -363,13 +368,19 @@ def test_the_container_gate_reports_a_body_without_the_container_rules():
 def test_a_paired_body_is_one_the_engine_renders():
     """Every body the reader pairs is checked against the engine's HTML.
 
-    These twenty are not: the reader and the lexer pair a fence where the
+    These thirty-one are not: the reader and the lexer pair a fence where the
     engine reads a container the lexer does not model. Each is an opener
     indented off column 0 at document level (`11-fenced-code-16` renders an
     inline code span), or a fence under a list item, a description or a quote
     in a nested host whose content column decides where the fence belongs.
     That is the documented limit of block openers not anchored at column 0,
     recorded so a change in either direction shows up here.
+
+    The bump to carve 99906e2 adds eleven new documents. Three `633-*` hold a
+    fence one column in below a nested item, which carve-js main renders as an
+    inline code span, like `11-fenced-code-16`. Eight `617-*` hold a `csv` or
+    `tsv` fence under `{table}`, which the engine renders as a table, not as
+    code. carve-js main renders all eleven as their corpus HTML.
     """
     unconfirmed = sorted({path.stem for path, source, html in _documents_with_html()
                           for body in fencebodies.bodies(source)
@@ -395,6 +406,17 @@ def test_a_paired_body_is_one_the_engine_renders():
         '558-a-container-boundary-is-read-at-the-container-s-own-column-4',
         '558-a-container-boundary-is-read-at-the-container-s-own-column-5',
         '561-a-line-block-payload-span-pairs-past-the-content-column-2',
+        '617-csv-and-tsv-table-bodies',
+        '617-csv-and-tsv-table-bodies-10',
+        '617-csv-and-tsv-table-bodies-2',
+        '617-csv-and-tsv-table-bodies-4',
+        '617-csv-and-tsv-table-bodies-5',
+        '617-csv-and-tsv-table-bodies-6',
+        '617-csv-and-tsv-table-bodies-8',
+        '617-csv-and-tsv-table-bodies-9',
+        '633-a-first-block-marker-on-an-indented-opener-reads-two-columns-20',
+        '633-a-first-block-marker-on-an-indented-opener-reads-two-columns-24',
+        '633-a-first-block-marker-on-an-indented-opener-reads-two-columns-28',
     ], unconfirmed
 
 

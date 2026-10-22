@@ -235,7 +235,7 @@ def test_that_reading_is_the_block_rule_and_not_the_inline_one():
 
 @corpus
 def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
-    """The zero above is only meaningful if this reader can reach thirty-six.
+    """The zero above is only meaningful if this reader can reach thirty-eight.
 
     Run over the same 2200 documents, the #30 rule shape buries content the
     corpus renders in exactly these - the six the ticket found plus two older
@@ -246,7 +246,9 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     description body's column, and 504, 508, 512 and 515 for a comment span
     whose closer sits below its host's column. The bump to carve 21879d7 adds
     two new documents, 556 and 583, each an indented comment inside a list
-    item. None of them is a rule change here - the current lexer buries
+    item. The bump to carve 99906e2 adds two more, `620-*-5` and `620-*-8`,
+    generated container documents that carve-js main renders as their corpus
+    HTML. None of them is a rule change here - the current lexer buries
     nothing in any of them.
     """
     hits = []
@@ -321,6 +323,8 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
         '556-a-closed-block-leaves-no-frame-for-the-line-below-14.crv',
         '583-a-comment-between-a-heading-and-a-colon-fence-leaves-the-fence-a'
         'n-opener.crv',
+        '620-generated-container-documents-5.crv',
+        '620-generated-container-documents-8.crv',
     ]), hits
 
 
