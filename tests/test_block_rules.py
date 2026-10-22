@@ -528,7 +528,7 @@ GUARDS = [
     Guard('a definition-list term needs content', 19, r'(?=[^ \t\n])', 0,
           ':: \n', [], [(Punctuation, '::')]),
     Guard('a quoted continuation marker is alone on its line', 20, '$', 0,
-          '> +x\n', [(Punctuation, '>'), (Generic.Emph, ' '), (Generic.Emph, '+'), (Generic.Emph, 'x')],
+          '> +x\nflush\n', [(Punctuation, '>'), (Generic.Emph, ' '), (Generic.Emph, '+'), (Generic.Emph, 'x')],
           [(Punctuation, '>'), (Operator, '+')]),
     Guard('a blockquote marker needs a space after it', 21, r'(?=[ \t]|$)', 0,
           '>foo\n', [], [(Punctuation, '>'), (Generic.Emph, 'foo')]),
@@ -895,10 +895,43 @@ def test_list_first_block_continuation_is_an_operator(marker, marker_token):
     ('- - [ ] +\n> q\n', Operator),
     ('- foo\n  - +\n- x\n', Operator),
     (':: t\n: +\n', Punctuation),
-    ('[^a]: +\n', Punctuation),
+    ('x[^a]\n\n[^a]: +\npara\n', Punctuation),
+    # Probed against carve-js main 48a18e5.
+    ('x[^a]\n\n[^a]: +\n', Text),
+    ('x[^a]\n\n[^a]: +\n- a\n', Text),
+    ('x[^a]\n\n[^a]: +\n  para\n', Text),
+    ('> q\n> +\n> para\n', Text),
+    ('> q\n>+\n> para\n', Text),
+    ('> +\n> para\n', Text),
+    ('>+\n> para\n', Text),
+    ('> +\n', Text),
+    ('> +\n- a\n', Text),
+    ('> +\n> > q\n', Text),
+    ('>  +\nq\n', Text),
+    ('> > +\n> > b\n', Text),
+    ('> > +\nb\n', Operator),
+    ('- a\n  > +\nq\n', Operator),
+    ('- a\n  > +\n    q\n', Text),
+    ('> > q\n>+\n> para\n', Text),
+    ('> - a\n>+\n> > r\n', Operator),
+    ('> - a\n> +\n> > r\n', Text),
+    ('> > q\n>\n> +\n> para\n', Text),
+    ('> - a\n>   - b\n>   +\n>   > q\n', Operator),
+    (':: t\n: a\n+\n- b\n', Operator),
+    ('x[^a]\n\n[^a]: n\n+\n- b\n', Operator),
+    ('> q\n+\n- b\n', Operator),
 ])
 def test_continuation_marker_position(sample, expected):
     assert [t for t, v in LEXER.get_tokens(sample) if v == '+'] == [expected]
+
+
+@pytest.mark.parametrize('sample', [
+    '- a\n  - b\n  +\n  > q\n\n  +\n  > r\n',
+    '- a\n  - b\n  +\n  > q\n  > q2\n  +\n  para\n',
+    '- a\n  - b\n  +\n  para\n  more\n  +\n  > q\n',
+])
+def test_a_second_plus_under_the_same_item(sample):
+    assert [t for t, v in LEXER.get_tokens(sample) if v == '+'] == [Operator, Operator]
 
 
 def test_plus_inside_code_fence_is_code():

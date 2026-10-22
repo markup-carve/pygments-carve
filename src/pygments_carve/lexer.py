@@ -981,6 +981,16 @@ def _open_columns(lines, row, depth, seen):
         if shape is None:
             break
         indent, openers = shape
+        plus = _LONE_PLUS.match(lines[j], _unquote(lines[j], depth)[0])
+        if plus and _plus_reading(lines, seen, j, plus.start(1), depth):
+            # The lines below were attached at the `+` column: that container
+            # stays open, the ones right of it close.
+            ceiling = indent + 1 if ceiling >= indent else ceiling
+            if (j, depth) in seen:
+                found += [(c, kind) for c, kind in seen[j, depth]
+                          if c < ceiling and (kind == 'item' or not blank)]
+                break
+            continue
         if openers is None:
             blank = True
             continue
@@ -1027,34 +1037,65 @@ def _lines(lexer, text):
     return entry[1:]
 
 
-def _plus_reading(lines, seen, row, start, plus_at, depth):
-    """Is the lone `+` at offset `plus_at`, on the line starting at `start`, a marker?
+_LONE_PLUS = re.compile(r'[ \t]*(\+)[ \t]*$')
+
+
+def _plus_reading(lines, seen, row, plus_at, depth):
+    """Is the lone `+` at line offset `plus_at` of `row`, read inside `depth` quotes, a marker?
 
     The relative rule (markup-carve/carve#3445): the `+` stands at an open
-    container's marker column or right after a quote prefix, and the next line
-    starts a block at that same column that is not a list item.
+    container's marker column, and the next line starts a block at that same
+    column; a list item there is a sibling, and leaves the `+` as text, only
+    when that container is a list item. Right behind open quote prefixes carve-js
+    takes no quote as that block, and a `+` glued to the prefix (`>+`)
+    attaches to a list item only.
     """
+    key = ('plus', row, depth)
+    if key in seen:
+        return seen[key]
+    seen[key] = False
     line = lines[row]
     stripped = _unquote(line, depth)
     if stripped is None:
         return False
     at, base = stripped
-    column = _columns(line, at, base)[plus_at - start - at] - base
-    if not (depth and column == 0) and all(c != column for c, _ in _open_columns(lines, row, depth, seen)):
+    column = _columns(line, at, base)[plus_at - at] - base
+    glued = depth and line[plus_at - 1] == '>'
+    kinds = {kind for c, kind in _open_columns(lines, row, depth, seen)
+             if c == column and (kind == 'item' or not glued)}
+    if not kinds:
         return False
     if row + 1 >= len(lines):
         return False
     follower = _shape(lines[row + 1], depth)
     if follower is None or follower[1] is None or follower[0] != column:
         return False
-    return not (follower[1] and follower[1][0] == (column, 'item'))
+    first = follower[1][0] if follower[1] else None
+    attaches = not ('item' in kinds and first == (column, 'item')) and not (depth and not glued and first == (0, 'quote'))
+    seen[key] = attaches
+    return attaches
+
+
+def _opener_follows(lines, row, depth, column):
+    """Does a first-block `+` behind `depth` new quote prefixes take the next line?
+
+    The next line must start a block flush with the quote, outside it (a line
+    that continues the quote keeps the `+` as text), and not a list item.
+    """
+    if row + 1 >= len(lines):
+        return False
+    line = lines[row + 1]
+    shape = _shape(line, min(_quote_depth(line), depth - 1))
+    if shape is None or shape[1] is None or _quote_depth(line) >= depth:
+        return False
+    return shape[0] <= column and not (shape[1] and shape[1][0][1] == 'item')
 
 
 def _continuation_marker(lexer, match):
     margin, plus, rest = match.group(1, 2, 3)
     lines, starts, seen = _lines(lexer, match.string)
     row = bisect.bisect_right(starts, match.start()) - 1
-    attaches = _plus_reading(lines, seen, row, match.start(), match.start(2), 0)
+    attaches = _plus_reading(lines, seen, row, match.start(2) - match.start(), 0)
     yield match.start(1), Text, margin
     yield match.start(2), Operator if attaches else Text, plus
     yield match.start(3), Text, rest
@@ -1081,15 +1122,29 @@ def _quoted_plus(lexer, match):
             break
     if depth > open_depth:
         indent = _columns(margin)[-1]
-        attaches = indent == 0 or any(
-            c < indent for c, kind in _open_columns(lines, row, 0, seen) if kind == 'item')
+        # Only right after the last prefix: `>  +` is quote text.
+        attaches = (re.search(r'>[ \t]?$', prefix) is not None
+                    and (indent == 0 or any(c < indent for c, kind in _open_columns(lines, row, 0, seen)
+                                            if kind == 'item'))
+                    and _opener_follows(lines, row, depth, indent))
     else:
-        attaches = _plus_reading(lines, seen, row, match.start(), match.start(3), depth)
+        attaches = _plus_reading(lines, seen, row, match.start(3) - match.start(), depth)
     yield match.start(1), Text, margin
     for part in re.finditer(r'>|[^>]+', prefix):
         yield match.start(2) + part.start(), Punctuation if part.group() == '>' else Text, part.group()
     yield match.start(3), Operator if attaches else Text, plus
     yield match.start(4), Text, rest
+
+
+_FLUSH_BLOCK = re.compile(
+    r'(?![-*](?:' + _ATTRS + r')?[ \t]|(?:' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?[ \t])[^ \t\n]')
+
+
+def _definition_plus(lexer, match):
+    """`[^a]: +` is a first-block marker over a flush-left block that is not a list item."""
+    text = match.string
+    end = text.find('\n', match.end())
+    yield match.start(), Punctuation if end >= 0 and _FLUSH_BLOCK.match(text, end + 1) else Text, '+'
 
 
 def _continuation_row(lexer, match):
@@ -1577,7 +1632,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
         # A definition's body: inline content that ends with its line.
         'defbody': [
             (r'$', Text, '#pop'),
-            (r'(?<=\]: )\+(?=[ \t]*$)', Punctuation),
+            (r'(?<=\]: )\+(?=[ \t]*$)', _definition_plus),
             include('inline'),
         ],
 
