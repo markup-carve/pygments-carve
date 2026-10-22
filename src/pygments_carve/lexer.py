@@ -197,7 +197,7 @@ _PARAGRAPH_START = (r'(?:\A|(?<=\n\n))(?=[^ \t\n])'
 #: `- # H`, `: - item`. The rest of the line is then lexed as a block of its own.
 _NESTED = (
     r'(?:#{1,6}[ \t]|>(?=[ \t]|$)|`{3,}|~{3,}|:{3,}|\|(?=[^\n]*\|[ \t]*$)'
-    r'|(?:[-*]|' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?(?= +[ \t]*[^ \t\n]))'
+    r'|\+(?=[ \t]*$)|(?:[-*]|' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?(?= +[ \t]*[^ \t\n]))'
 )
 _NESTED_TAIL = r'(?:([ \t]+)(?=' + _NESTED + r')([^\n]*))?'
 
@@ -879,9 +879,6 @@ def _silent(lexer, match):
     return iter(())
 
 
-_LIST_LINE = re.compile(
-    r'[ \t]*(?:[-*]|' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?[ \t]+[^ \t\n]')
-_HOLDER_LINE = re.compile(r'[ \t]*(?:>(?=[ \t]|$)|::?[ \t]+[^ \t\n])')
 _ROW_LINE = re.compile(
     r'[ \t]*' + _MARKER_RUN + r'\|[^\n]*\|(?:' + _ATTRS + r')?[ \t]*$')
 _PLUS_ROW_LINE = re.compile(r'[ \t]*\+[ \t][^\n]*\|(?:' + _ATTRS + r')?[ \t]*$')
@@ -895,7 +892,7 @@ def _line_above(text, start):
 
 
 def _decisions(lexer, text):
-    """Per-document record of each `+` line's reading, keyed by line offset.
+    """Per-document record of each `+ ... |` line's reading, keyed by line offset.
 
     Reusing the reading of the nearest `+` line above keeps the lookback linear.
     """
@@ -906,41 +903,250 @@ def _decisions(lexer, text):
     return memo[1]
 
 
-def _plus_attaches(text, start, decided, blank=False):
-    """Does a lone `+` at `start` attach to an open list item, quote or description?
+_BLOCK_OPENER = re.compile(
+    r'(?:(?P<item>(?:[-*](?:' + _ATTRS + r')?[ \t]+(?:\[[ xX_>?-]\][ \t]+)?'
+    r'|(?:' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?[ \t]+))'
+    r'|(?P<quote>>(?:[ \t]|$))|(?P<holder>(?:::?|\[\^[^\]\n]+\]:)[ \t]+))')
+_BLOCK_LINE = re.compile(r'(?:`{3,}|~{3,}|:{3,}|#{1,6}(?:[ \t]|$)|\|)')
 
-    A list item stays open across blank lines; a quote or a description does
-    not, and any other block at the left margin closes all three.
-    """
-    end = start
+
+def _columns(text, start=0, col=0):
+    """Visual column of each offset from `start`, with tab stops of four."""
+    cols = []
+    for ch in text[start:]:
+        cols.append(col)
+        col = col + 4 - col % 4 if ch == '\t' else col + 1
+    cols.append(col)
+    return cols
+
+
+def _unquote(line, depth):
+    """Strip `depth` quote prefixes: (offset, column) of what follows, or None."""
+    at, col = 0, 0
+    for _ in range(depth):
+        while at < len(line) and line[at] in ' \t' and col < 3:
+            col = col + 4 - col % 4 if line[at] == '\t' else col + 1
+            at += 1
+        if at >= len(line) or line[at] != '>':
+            return None
+        at, col = at + 1, col + 1
+        if at < len(line) and line[at] in ' \t':
+            col = col + 4 - col % 4 if line[at] == '\t' else col + 1
+            at += 1
+    return at, col
+
+
+def _quote_depth(line):
+    depth = 0
+    while _unquote(line, depth + 1) is not None:
+        depth += 1
+    return depth
+
+
+def _shape(line, depth):
+    """(indent, [(column, kind)]) of a line read inside `depth` quotes, or None."""
+    stripped = _unquote(line, depth)
+    if stripped is None:
+        return None
+    at, base = stripped
+    cols = _columns(line, at, base)
+    rest = line[at:]
+    lead = len(rest) - len(rest.lstrip(' \t'))
+    if lead == len(rest):
+        return cols[lead], None
+    openers, pos = [], lead
     while True:
-        line = _line_above(text, end)
-        if line is None:
-            return False
-        end -= len(line) + 1
-        if not line.strip():
+        m = _BLOCK_OPENER.match(rest, pos)
+        if not m or m.end() == pos:
+            break
+        openers.append((cols[pos] - base, m.lastgroup))
+        pos = m.end()
+        while pos < len(rest) and rest[pos] in ' \t':
+            pos += 1
+    return cols[lead] - base, openers
+
+
+def _open_columns(lines, row, depth, seen):
+    """Marker columns of the containers still open at `row`, read inside `depth` quotes.
+
+    A list item stays open across a blank line; a quote, a description or a
+    footnote does not. A line left of a container's marker column closes it,
+    unless it is a lazy paragraph line.
+    """
+    if (row, depth) in seen:
+        return seen[row, depth]
+    found, ceiling, blank = [], float('inf'), False
+    for j in range(row - 1, -1, -1):
+        shape = _shape(lines[j], depth)
+        if shape is None:
+            break
+        indent, openers = shape
+        plus = _LONE_PLUS.match(lines[j], _unquote(lines[j], depth)[0])
+        if plus and _plus_reading(lines, seen, j, plus.start(1), depth):
+            # The lines below were attached at the `+` column: that container
+            # stays open, the ones right of it close.
+            ceiling = indent + 1 if ceiling >= indent else ceiling
+            if (j, depth) in seen:
+                found += [(c, kind) for c, kind in seen[j, depth]
+                          if c < ceiling and (kind == 'item' or not blank)]
+                break
+            continue
+        if openers is None:
             blank = True
-        elif line.strip() == '+':
-            if end in decided:
-                return decided[end][blank]
-        elif _LIST_LINE.match(line):
-            return True
-        elif _HOLDER_LINE.match(line):
-            return not blank
-        elif line[0] not in ' \t' and (blank or not line[0].isalnum()):
-            return False
+            continue
+        if openers:
+            for col, kind in openers:
+                if col < ceiling and (kind == 'item' or not blank):
+                    found.append((col, kind))
+            ceiling = min(ceiling, openers[0][0])
+        else:
+            above = _shape(lines[j - 1], depth) if j else None
+            lazy = (not _BLOCK_LINE.match(lines[j], len(lines[j]) - len(lines[j].lstrip(' \t>')))
+                    and above is not None and above[1] is not None)
+            if not lazy:
+                ceiling = min(ceiling, indent)
+        if ceiling <= 0:
+            break
+        # A row read before already holds everything above it: stay linear.
+        if (j, depth) in seen:
+            found += [(c, kind) for c, kind in seen[j, depth]
+                      if c < ceiling and (kind == 'item' or not blank)]
+            break
+    # Unique: a row inherits its neighbor's list, which must not grow per row.
+    found = list(dict.fromkeys(found))
+    seen[row, depth] = found
+    return found
+
+
+def _lines(lexer, text):
+    """The document's lines, their start offsets and a lookback memo, once per text.
+
+    Keyed by identity: a `using` sub-lexer runs on the same lexer with a
+    substring, and must not evict the outer document.
+    """
+    memo = getattr(lexer, '_plus_lines', None)
+    if memo is None:
+        memo = lexer._plus_lines = {}
+    entry = memo.get(id(text))
+    if entry is None or entry[0] is not text:
+        if len(memo) > 8:
+            memo.clear()
+        lines = text.split('\n')
+        starts = [0]
+        for line in lines:
+            starts.append(starts[-1] + len(line) + 1)
+        entry = memo[id(text)] = (text, lines, starts, {})
+    return entry[1:]
+
+
+_LONE_PLUS = re.compile(r'[ \t]*(\+)[ \t]*$')
+
+
+def _plus_reading(lines, seen, row, plus_at, depth):
+    """Is the lone `+` at line offset `plus_at` of `row`, read inside `depth` quotes, a marker?
+
+    The relative rule (markup-carve/carve#3445): the `+` stands at an open
+    container's marker column, and the next line starts a block at that same
+    column; a list item there is a sibling, and leaves the `+` as text, only
+    when that container is a list item. Right behind open quote prefixes carve-js
+    takes no quote as that block, and a `+` glued to the prefix (`>+`)
+    attaches to a list item only.
+    """
+    key = ('plus', row, depth)
+    if key in seen:
+        return seen[key]
+    seen[key] = False
+    line = lines[row]
+    stripped = _unquote(line, depth)
+    if stripped is None:
+        return False
+    at, base = stripped
+    column = _columns(line, at, base)[plus_at - at] - base
+    glued = depth and line[plus_at - 1] == '>'
+    kinds = {kind for c, kind in _open_columns(lines, row, depth, seen)
+             if c == column and (kind == 'item' or not glued)}
+    if not kinds:
+        return False
+    if row + 1 >= len(lines):
+        return False
+    follower = _shape(lines[row + 1], depth)
+    if follower is None or follower[1] is None or follower[0] != column:
+        return False
+    first = follower[1][0] if follower[1] else None
+    attaches = not ('item' in kinds and first == (column, 'item')) and not (depth and not glued and first == (0, 'quote'))
+    seen[key] = attaches
+    return attaches
+
+
+def _opener_follows(lines, row, depth, column):
+    """Does a first-block `+` behind `depth` new quote prefixes take the next line?
+
+    The next line must start a block flush with the quote, outside it (a line
+    that continues the quote keeps the `+` as text), and not a list item.
+    """
+    if row + 1 >= len(lines):
+        return False
+    line = lines[row + 1]
+    shape = _shape(line, min(_quote_depth(line), depth - 1))
+    if shape is None or shape[1] is None or _quote_depth(line) >= depth:
+        return False
+    return shape[0] <= column and not (shape[1] and shape[1][0][1] == 'item')
 
 
 def _continuation_marker(lexer, match):
     margin, plus, rest = match.group(1, 2, 3)
-    decided = _decisions(lexer, match.string)
-    attaches = _plus_attaches(match.string, match.start(), decided)
-    # Also the reading a later `+` with a blank line between would reach here.
-    decided[match.start()] = (
-        attaches, _plus_attaches(match.string, match.start(), decided, blank=True))
+    lines, starts, seen = _lines(lexer, match.string)
+    row = bisect.bisect_right(starts, match.start()) - 1
+    attaches = _plus_reading(lines, seen, row, match.start(2) - match.start(), 0)
     yield match.start(1), Text, margin
     yield match.start(2), Operator if attaches else Text, plus
     yield match.start(3), Text, rest
+
+
+def _quoted_plus(lexer, match):
+    """A `+` alone behind quote prefixes.
+
+    A prefix that opens a quote makes it a first-block marker; behind the
+    prefixes of quotes already open it is a separate-line marker for them.
+    """
+    text = match.string
+    margin, prefix, plus, rest = match.group(1, 2, 3, 4)
+    lines, starts, seen = _lines(lexer, text)
+    row = bisect.bisect_right(starts, match.start()) - 1
+    depth = prefix.count('>')
+    open_depth = 0
+    for j in range(row - 1, -1, -1):
+        shape = _shape(lines[j], 0)
+        if shape[1] is None:
+            break
+        open_depth = _quote_depth(lines[j])
+        if open_depth or shape[1] or _BLOCK_LINE.match(lines[j].lstrip(' \t')):
+            break
+    if depth > open_depth:
+        indent = _columns(margin)[-1]
+        # Only right after the last prefix: `>  +` is quote text.
+        attaches = (re.search(r'>[ \t]?$', prefix) is not None
+                    and (indent == 0 or any(c < indent for c, kind in _open_columns(lines, row, 0, seen)
+                                            if kind == 'item'))
+                    and _opener_follows(lines, row, depth, indent))
+    else:
+        attaches = _plus_reading(lines, seen, row, match.start(3) - match.start(), depth)
+    yield match.start(1), Text, margin
+    for part in re.finditer(r'>|[^>]+', prefix):
+        yield match.start(2) + part.start(), Punctuation if part.group() == '>' else Text, part.group()
+    yield match.start(3), Operator if attaches else Text, plus
+    yield match.start(4), Text, rest
+
+
+_FLUSH_BLOCK = re.compile(
+    r'(?![-*](?:' + _ATTRS + r')?[ \t]|(?:' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?[ \t])[^ \t\n]')
+
+
+def _definition_plus(lexer, match):
+    """`[^a]: +` is a first-block marker over a flush-left block that is not a list item."""
+    text = match.string
+    end = text.find('\n', match.end())
+    yield match.start(), Punctuation if end >= 0 and _FLUSH_BLOCK.match(text, end + 1) else Text, '+'
 
 
 def _continuation_row(lexer, match):
@@ -1302,15 +1508,17 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'^(' + _MARGIN + r')(::)( +[ \t]*)(?=[^ \t\n])',
              bygroups(Text, Punctuation, Text), ('deflist', 'termtail', 'heading')),
 
+            # A `+` alone behind quote prefixes is read by its column.
+            (r'^(' + _MARGIN + r')((?:>[ \t]*)+)(\+)([ \t]*)$', _quoted_plus),
             # Blockquote marker. A marker must be followed by a space or end the
             # line; `>foo` is a paragraph. A block after the marker is lexed as
             # one (`_NESTED_TAIL`), as it is after a list marker below.
             (r'^(' + _MARGIN + r')(>+)(?=[ \t]|$)' + _NESTED_TAIL,
-             bygroups(Text, Punctuation, Text, using(this, state='root')), 'quoteline'),
+             bygroups(Text, Punctuation, Text, using(this, state='nested')), 'quoteline'),
 
             # Task items before plain bullets, so the state marker is its own
             # token. Only a bullet takes one, and only the `task_state` set.
-            (r'^(' + _MARGIN + r')([-*](?:' + _ATTRS + r')?)'
+            (r'^(' + _MARGIN + r')((?:[-*] +)*[-*](?:' + _ATTRS + r')?)'
              r'( +)(\[[ xX_>?-]\])(?= +[ \t]*[^ \t\n])'
              r'(?:( +)(\+)(?=[ \t]*$))?',
              bygroups(Text, Punctuation, Text, Name.Constant, Text, Operator)),
@@ -1326,8 +1534,8 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # needs a space and then content.
             (r'^(' + _MARGIN + r')((?:[-*] +)*[-*](?:' + _ATTRS + r')?)(?= +[ \t]*[^ \t\n])'
              + _NESTED_TAIL,
-             bygroups(Text, Punctuation, Text, using(this, state='root'))),
-            # A lone `+` is a `continuation_marker` only under an open container.
+             bygroups(Text, Punctuation, Text, using(this, state='nested'))),
+            # A lone `+` is a marker only at an open container's marker column.
             (r'^(' + _MARGIN + r')(\+)([ \t]*)$', _continuation_marker),
 
             # Ordered markers: numeric, alphabetic, roman, and the bare `.` that
@@ -1335,9 +1543,9 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # attributes.
             (r'^(' + _MARGIN + r')(' + _ORDINAL + r'[.)](?:' + _ATTRS + r')?)(?= +[ \t]*[^ \t\n])'
              + _NESTED_TAIL,
-             bygroups(Text, Number.Integer, Text, using(this, state='root'))),
+             bygroups(Text, Number.Integer, Text, using(this, state='nested'))),
             (r'^(' + _MARGIN + r')(\.(?:' + _ATTRS + r')?)(?= +[ \t]*[^ \t\n])' + _NESTED_TAIL,
-             bygroups(Text, Number.Integer, Text, using(this, state='root'))),
+             bygroups(Text, Number.Integer, Text, using(this, state='nested'))),
 
             # Tables. The header marker, the alignment run and the separator row
             # are their own tokens; cell content is lexed inline.
@@ -1381,7 +1589,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
                      using(this, state='fencelang'), using(this, state='infostring'),
                      Text, _BODY, Text, Punctuation, Text)),
             (r'^(' + _MARGIN + r')(:)(?= +[ \t]*[^ \t\n])' + _NESTED_TAIL,
-             bygroups(Text, Punctuation, Text, using(this, state='root'))),
+             bygroups(Text, Punctuation, Text, using(this, state='nested'))),
             include('block'),
         ],
 
@@ -1475,6 +1683,11 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'[^\n|]', Text),
         ],
 
+        'nested': [
+            (r'^\+(?=[ \t]*$)', Punctuation),
+            include('block'),
+        ],
+
         # The marker run a definition line may carry, tokenized the way the
         # marker rules in `block` tokenize the same markers on their own.
         'markerrun': [
@@ -1488,6 +1701,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
         # A definition's body: inline content that ends with its line.
         'defbody': [
             (r'$', Text, '#pop'),
+            (r'(?<=\]: )\+(?=[ \t]*$)', _definition_plus),
             include('inline'),
         ],
 
