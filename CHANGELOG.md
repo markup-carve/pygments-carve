@@ -34,6 +34,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (markup-carve/carve#3421). (markup-carve/pygments-carve#106)
 - An attribute block after plain brackets stays text, as the engine renders
   it. (markup-carve/pygments-carve#101)
+- A `:` left of the `::` column of the definition list it would continue,
+  such as a description below a list nested in an item, is paragraph text
+  instead of a separator (markup-carve/carve#3458).
+  (markup-carve/pygments-carve#107)
 
 ## [0.1.1] - 2026-10-14
 

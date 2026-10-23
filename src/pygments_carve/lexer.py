@@ -1194,6 +1194,37 @@ def _hosted_quote_plus(lexer, match):
     yield match.start(6), Text, rest
 
 
+_TERM_LINE = re.compile(r'[ \t]*::[ \t]')
+_DESCRIPTION_LINE = re.compile(r'[ \t]*:[ \t]')
+
+
+def _description_marker(lexer, match):
+    """A `:` left of its term's `::` column ends the list and reads as text (carve#3458)."""
+    margin, colon = match.group(1), match.group(2)
+    lines, starts, _ = _lines(lexer, match.string)
+    row = bisect.bisect_right(starts, match.start()) - 1
+    column = _columns(margin)[-1]
+    term = None
+    for j in range(row - 1, -1, -1):
+        line = lines[j]
+        if not line.strip():
+            continue
+        indent = _columns(line[:len(line) - len(line.lstrip(' \t'))])[-1]
+        if _TERM_LINE.match(line):
+            term = indent if term is None else min(term, indent)
+            if term <= column:
+                break
+        elif not _DESCRIPTION_LINE.match(line) and term is not None and indent < term:
+            break
+    yield match.start(1), Text, margin
+    below = term is not None and column < term
+    yield match.start(2), Text if below else Punctuation, colon
+    if match.group(3) is not None:
+        yield match.start(3), Text, match.group(3)
+        for at, token, value in lexer.get_tokens_unprocessed(match.group(4), ('root', 'inline' if below else 'nested')):
+            yield match.start(4) + at, token, value
+
+
 _FLUSH_BLOCK = re.compile(
     r'(?![-*](?:' + _ATTRS + r')?[ \t]|(?:' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?[ \t])[^ \t\n]')
 
@@ -1648,8 +1679,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
              _fenced(8, Text, Text, Punctuation, Text, Punctuation, None, Text,
                      using(this, state='fencelang'), using(this, state='infostring'),
                      Text, _BODY, Text, Punctuation, Text)),
-            (r'^(' + _MARGIN + r')(:)(?= +[ \t]*[^ \t\n])' + _NESTED_TAIL,
-             bygroups(Text, Punctuation, Text, using(this, state='nested'))),
+            (r'^(' + _MARGIN + r')(:)(?= +[ \t]*[^ \t\n])' + _NESTED_TAIL, _description_marker),
             include('block'),
         ],
 

@@ -217,3 +217,20 @@ def test_a_plus_line_under_a_term_is_the_term_s_text(source):
 
 def test_a_lone_plus_under_a_description_is_still_a_continuation_marker():
     assert (Operator, '+') in run(':: t\n: d\n+\nx\n')
+
+
+# A `:` left of the `::` column of the definition list it would continue ends
+# that list and is paragraph text (markup-carve/carve#3458), probed against
+# carve-js 0.1.13. Each sample's `:` readings, in order.
+@pytest.mark.parametrize('source, readings', [
+    ('- a\n  :: term\n: detail\n', [Text]),
+    ('1. a\n   :: term\n : detail\n', [Text]),
+    ('- a\n  :: term\n  : d\n\n  more\n: detail\n', [Punctuation, Text]),
+    ('- a\n  :: term\n: - x\n', [Text]),
+    ('- a\n  :: term\n  : detail\n', [Punctuation]),
+    (':: t\n: d\n', [Punctuation]),
+    (':: a\n: x\n\n  :: b\n  : y\n: z\n', [Punctuation, Punctuation, Punctuation]),
+    (':: a\n: x\n  :: b\n  : y\n: z\n', [Punctuation, Punctuation, Punctuation]),
+])
+def test_a_description_separator_below_its_term_column_is_text(source, readings):
+    assert [t for t, v in LEXER.get_tokens(source) if v == ':'] == readings
