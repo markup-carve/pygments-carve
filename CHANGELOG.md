@@ -6,6 +6,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-23
+
+### Added
+
+- `csv` and `tsv` fence bodies are highlighted: each field gets its own token
+  type and the separator is scoped as an operator, colored apart from the
+  fields in the default styles. (markup-carve/pygments-carve#95,
+  markup-carve/pygments-carve#96, markup-carve/pygments-carve#97,
+  markup-carve/pygments-carve#98)
+
+### Changed
+
+- Continuation markers are tokenized as `Operator`.
+  (markup-carve/pygments-carve#100)
+
+### Fixed
+
+- A lone `+` line is scoped as a continuation marker only where the engine
+  reads one: at an open container's marker column with a non-list block below
+  it (markup-carve/carve#3445), and behind quote prefixes only with a space
+  after each `>`; `>+`, `>>+` and `>> +` stay text.
+  (markup-carve/pygments-carve#92, markup-carve/pygments-carve#99,
+  markup-carve/pygments-carve#103)
+- `- > +`, a `+` that is the first block of a quote opened on a list item
+  line, is scoped as a marker when the next line starts a block it attaches
+  (markup-carve/carve#3421). (markup-carve/pygments-carve#106)
+- An attribute block after plain brackets stays text, as the engine renders
+  it. (markup-carve/pygments-carve#101)
+
 ## [0.1.1] - 2026-10-14
 
 ### Added
