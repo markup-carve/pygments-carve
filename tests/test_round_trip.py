@@ -171,6 +171,9 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
     not moved. The bump to carve 99906e2 adds six over 2974, all new
     documents (`616-*` and `620-*`) that carve-js main renders as their corpus
     HTML.
+    The bump to carve 3214cb6 adds one over 3022, the new document
+    `645-a-comment-line-leaves-a-description-s-list-item-open-for-a-fence`,
+    which carve-js main renders as its corpus HTML.
 
     The ticket counted 32, comparing against the SOURCE rather than against what
     Pygments hands the rules. The 32nd is `250-line-endings-and-a-byte-order-
@@ -185,8 +188,8 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         _regression_source()
         .replace("options.setdefault('stripnl', False)", "options.setdefault('stripnl', True)")
         .replace("options.setdefault('ensurenl', False)", "options.setdefault('ensurenl', True)"))
-    assert count(both) == 104, count(both)
-    assert count(REGRESSION) == 101, count(REGRESSION)
+    assert count(both) == 105, count(both)
+    assert count(REGRESSION) == 102, count(REGRESSION)
     assert count(DEFAULTS) == 3, count(DEFAULTS)
     assert count(LEXER) == 0, count(LEXER)
 
