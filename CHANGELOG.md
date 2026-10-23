@@ -37,7 +37,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A `:` left of the `::` column of the definition list it would continue,
   such as a description below a list nested in an item, is paragraph text
   instead of a separator (markup-carve/carve#3458).
-  (markup-carve/pygments-carve#107)
+  (markup-carve/pygments-carve#107, markup-carve/pygments-carve#108)
 
 ## [0.1.1] - 2026-10-14
 
