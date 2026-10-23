@@ -51,7 +51,7 @@ jobs:
     steps:
       # fetch-depth: 0 for the tags: the check below asks whether a ref exists,
       # and a shallow clone carries none of them.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -132,9 +132,9 @@ jobs:
     timeout-minutes: 15
     needs: [guard]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -147,7 +147,7 @@ jobs:
       # after the version number is spent.
       - run: twine check --strict dist/*
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -169,18 +169,18 @@ jobs:
     timeout-minutes: 20
     needs: [build]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # BOTH submodules. The corpus suite lexes every spec document and the
           # construct sweep reads carve-grammars' inventory in place; without
           # them each collects zero cases, which reads as a pass.
           submodules: true
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
@@ -316,9 +316,9 @@ jobs:
       # See markup-carve/carve-wasm#80.
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -434,7 +434,7 @@ jobs:
       # Without this the push 403s AFTER the approval has been spent.
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -474,11 +474,11 @@ jobs:
       contents: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.version }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -503,7 +503,7 @@ jobs:
 
       # The artifacts package-gate measured, not a rebuild. A rebuild here would
       # upload something no gate has opened.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
