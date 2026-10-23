@@ -298,10 +298,16 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     over the 2508 documents at 1a75124, 175 over the 2974 at 99906e2. All
     forty-two are new documents, carve-js main renders each as its corpus
     HTML, and no document already in the corpus changed its verdict.
+
+    The bump to carve 3214cb6 adds two, measured the same way: 175 hits over
+    the 2974 documents at 99906e2, 177 over the 3022 at 3214cb6. Both are new
+    `650-*` documents (a wrapped attribute line), carve-js main renders each
+    as its corpus HTML, and no document already in the corpus changed its
+    verdict.
     """
     hits = [p.name for p in DOCUMENTS
             if _non_verbatim(REGRESSION, p.read_text(encoding='utf-8'))]
-    assert len(hits) == 175, len(hits)
+    assert len(hits) == 177, len(hits)
 
 
 # ----------------------------------------------------------------------------
