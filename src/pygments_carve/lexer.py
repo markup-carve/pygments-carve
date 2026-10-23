@@ -1161,6 +1161,39 @@ def _quoted_plus(lexer, match):
     yield match.start(4), Text, rest
 
 
+def _hosted_quote_plus(lexer, match):
+    """`- > +`: a first-block `+` behind a quote that a list item opens on the same line.
+
+    It takes the next line when that line starts a block other than a list item
+    at column 0 of the line's quote level, at the line's own indent, or at the
+    column of the quote that owns the `+` (carve#3421, corpus 630 to 656).
+    """
+    margin, outer, run, quotes, plus, rest = match.group(1, 2, 3, 4, 5, 6)
+    lines, starts, seen = _lines(lexer, match.string)
+    row = bisect.bisect_right(starts, match.start()) - 1
+    attaches = False
+    if row + 1 < len(lines):
+        line, follower = lines[row], lines[row + 1]
+        depth = outer.count('>')
+        cols = _columns(line)
+        base = cols[len(margin) + len(outer)] if depth else 0
+        quote_at = len(margin) + len(outer) + len(run) + len(quotes) - 2
+        eligible = {0, cols[len(margin) + len(outer)] - base, cols[quote_at] - base}
+        shape = _shape(follower, min(_quote_depth(follower), depth))
+        if shape is not None and shape[1] is not None and not _LONE_PLUS.fullmatch(follower.lstrip(' \t>')):
+            attaches = shape[0] in eligible and not (shape[1] and shape[1][0][1] == 'item')
+    yield match.start(1), Text, margin
+    for part in re.finditer(r'>|[^>]+', outer):
+        yield match.start(2) + part.start(), Punctuation if part.group() == '>' else Text, part.group()
+    for part in re.finditer(r'(\[[ xX_>?-]\])|(' + _ORDINAL + r'[.)](?:' + _ATTRS + r')?|\.(?:' + _ATTRS + r')?)|[-*](?:' + _ATTRS + r')?| ', run):
+        kind = Name.Constant if part.group(1) else Number.Integer if part.group(2) else Text if part.group() == ' ' else Punctuation
+        yield match.start(3) + part.start(), kind, part.group()
+    for part in re.finditer(r'>| ', quotes):
+        yield match.start(4) + part.start(), Punctuation if part.group() == '>' else Text, part.group()
+    yield match.start(5), Operator if attaches else Text, plus
+    yield match.start(6), Text, rest
+
+
 _FLUSH_BLOCK = re.compile(
     r'(?![-*](?:' + _ATTRS + r')?[ \t]|(?:' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?[ \t])[^ \t\n]')
 
@@ -1531,6 +1564,9 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'^(' + _MARGIN + r')(::)( +[ \t]*)(?=[^ \t\n])',
              bygroups(Text, Punctuation, Text), ('deflist', 'termtail', 'heading')),
 
+            # `- > +`: a list item opening a quote whose first block is a `+`.
+            (r'^(' + _MARGIN + r')((?:> )*)((?:(?:[-*](?:' + _ATTRS + r')?(?: \[[ xX_>?-]\])?|(?:'
+             + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?) )+)((?:> )+)(\+)([ \t]*)$', _hosted_quote_plus),
             # A `+` alone behind quote prefixes is read by its column. Each `>`
             # needs a space after it: `>+`, `>>+` and `>> +` are paragraph text.
             (r'^(' + _MARGIN + r')((?:> [ \t]*)+)(\+)([ \t]*)$', _quoted_plus),
