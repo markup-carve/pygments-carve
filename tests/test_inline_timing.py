@@ -227,3 +227,11 @@ def test_the_sweep_can_say_no(name, old, new, unit):
     assert growth(mutant, unit, budget=2, attempts=1) > LIMIT, (
         '%s: the old pattern is expected to fail the sweep; if it no longer '
         'does, the sweep cannot see the defect it was written for.' % name)
+
+
+@pytest.mark.parametrize('prefix, unit', [(':: t\n', ': d\n'), ('- a\n  :: t\n', '  : d\n')])
+def test_a_long_definition_list_is_linear(prefix, unit):
+    # Each separator reads its term column; without the memo that walk is quadratic.
+    ratio = growth(LEXER, unit, prefix)
+    assert ratio <= LIMIT, (
+        'quadrupling %r under %r multiplied the time by %.1f.' % (unit, prefix, ratio))

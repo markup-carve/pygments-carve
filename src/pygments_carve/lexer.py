@@ -1201,10 +1201,11 @@ _DESCRIPTION_LINE = re.compile(r'[ \t]*:[ \t]')
 def _description_marker(lexer, match):
     """A `:` left of its term's `::` column ends the list and reads as text (carve#3458)."""
     margin, colon = match.group(1), match.group(2)
-    lines, starts, _ = _lines(lexer, match.string)
+    lines, starts, seen = _lines(lexer, match.string)
     row = bisect.bisect_right(starts, match.start()) - 1
     column = _columns(margin)[-1]
     term = None
+    below = None
     for j in range(row - 1, -1, -1):
         line = lines[j]
         if not line.strip():
@@ -1214,10 +1215,17 @@ def _description_marker(lexer, match):
             term = indent if term is None else min(term, indent)
             if term <= column:
                 break
-        elif not _DESCRIPTION_LINE.match(line) and term is not None and indent < term:
+        elif _DESCRIPTION_LINE.match(line):
+            # An earlier separator at this column with no term between reads the same.
+            if term is None and indent == column and ('desc', j) in seen:
+                below = seen['desc', j]
+                break
+        elif term is not None and indent < term:
             break
+    if below is None:
+        below = term is not None and column < term
+    seen['desc', row] = below
     yield match.start(1), Text, margin
-    below = term is not None and column < term
     yield match.start(2), Text if below else Punctuation, colon
     if match.group(3) is not None:
         yield match.start(3), Text, match.group(3)
