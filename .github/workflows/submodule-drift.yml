@@ -47,10 +47,10 @@ jobs:
           - path: carve-grammars
             repo: markup-carve/carve-grammars
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check out ${{ matrix.repo }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ matrix.repo }}
           path: upstream

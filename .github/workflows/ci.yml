@@ -28,7 +28,7 @@ jobs:
         # daily in eol-runtimes.yml instead of on every PR.
         python: ['3.11', '3.13']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # BOTH submodules. The corpus test lexes every spec document and the
           # construct sweep reads carve-grammars' inventory in place; without
@@ -37,7 +37,7 @@ jobs:
           # either is missing, because CI is set.
           submodules: true
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
 
