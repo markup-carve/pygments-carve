@@ -13,7 +13,7 @@ CSV and TSV highlighting is available by language name, and Carve scopes follow 
 ### Improvements
 
 - Hosts can select the CSV and TSV lexers by name (#113).
-- Carve highlighting follows carve-grammars 0.1.19 scopes (#111).
+- Carve highlighting follows the published carve-grammars 0.1.20 scopes, including wrapped attributes in definitions and quotes (#111).
 
 **Full Changelog**: https://github.com/markup-carve/pygments-carve/compare/0.1.2...0.1.3
 
