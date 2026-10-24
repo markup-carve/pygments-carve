@@ -1,13 +1,13 @@
-# CSV and TSV lexer lookup
+# Pygments release 0.1.3
 
 ## Root cause
 
-The CSV and TSV lexer classes have aliases, but Pygments discovers third-party lexers through package entry points. The package registers only Carve, so a consumer calling `get_lexer_by_name` for either delimited language cannot find its lexer.
+The CSV and TSV entry points are merged, but consumers cannot require them from PyPI until a new package version is prepared and dispatched.
 
 ## Change
 
-Register both existing classes in the `pygments.lexers` entry point group. Test lookup through Pygments and check that the separator receives a distinct operator token.
+Cut the next patch version across both version fields and document every merge since 0.1.2 in the changelog. Prepare an unpublished GitHub draft release from the merged commit.
 
 ## Scope
 
-Registration applies to every consumer that asks Pygments for these language names, independent of the fence content or host application. The lexer rules already handle the fields and separators.
+This records the package state at a release boundary. It does not alter the lexer rules or depend on any particular fence content.
