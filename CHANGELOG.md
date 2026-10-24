@@ -8,14 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.1.3] - 2026-10-24
 
-### Added
+CSV and TSV highlighting is available by language name, and Carve scopes follow the current grammar release.
 
-- Register the existing CSV and TSV lexers as Pygments entry points so host highlighters can resolve both languages by name. (markup-carve/pygments-carve#113)
+### Improvements
 
-### Changed
+- Hosts can select the CSV and TSV lexers by name (#113).
+- Carve highlighting follows carve-grammars 0.1.19 scopes (#111).
 
-- Move the carve-grammars submodule to v0.1.19. (markup-carve/pygments-carve#111)
-- Move CI GitHub Actions to their Node 24 majors. (markup-carve/pygments-carve#112)
+**Full Changelog**: https://github.com/markup-carve/pygments-carve/compare/0.1.2...0.1.3
 
 ## [0.1.2] - 2026-10-23
 
