@@ -1,0 +1,13 @@
+# CSV and TSV lexer lookup
+
+## Root cause
+
+The CSV and TSV lexer classes have aliases, but Pygments discovers third-party lexers through package entry points. The package registers only Carve, so a consumer calling `get_lexer_by_name` for either delimited language cannot find its lexer.
+
+## Change
+
+Register both existing classes in the `pygments.lexers` entry point group. Test lookup through Pygments and check that the separator receives a distinct operator token.
+
+## Scope
+
+Registration applies to every consumer that asks Pygments for these language names, independent of the fence content or host application. The lexer rules already handle the fields and separators.
