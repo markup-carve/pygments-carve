@@ -267,6 +267,8 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
     carve 99906e2, all new documents. carve-js main renders each one as its
     corpus HTML, and the guarded lexer reports zero on them; the `600-*` ones
     hold a delimiter followed by a combining mark or a keycap.
+    The spec 0.1.12 corpus adds `19-*-35`, which the unguarded rules also
+    misread while the guarded lexer keeps its delimiters as text.
     """
     hits = sorted(p.stem for p in DOCUMENTS
                   if _case(p)[1] is not None
@@ -281,6 +283,7 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         '129-emphasis-opener-slash-adjacency-2',
         '129-emphasis-opener-slash-adjacency-3',
         '131-emphasis-span-closes-before-a-following-delimiter',
+        '19-smart-typography-dashes-and-quotes-35',
         '20-smart-typography-arrows-and-symbols',
         '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters'
         '-10',
