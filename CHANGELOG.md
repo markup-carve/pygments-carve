@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-24
+
+### Added
+
+- Register the existing CSV and TSV lexers as Pygments entry points so host highlighters can resolve both languages by name. (markup-carve/pygments-carve#113)
+
+### Changed
+
+- Move the carve-grammars submodule to v0.1.19. (markup-carve/pygments-carve#111)
+- Move CI GitHub Actions to their Node 24 majors. (markup-carve/pygments-carve#112)
+
 ## [0.1.2] - 2026-10-23
 
 ### Added
