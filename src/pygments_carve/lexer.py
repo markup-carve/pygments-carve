@@ -930,7 +930,7 @@ def _decisions(lexer, text):
 
 
 _BLOCK_OPENER = re.compile(
-    r'(?:(?P<item>(?:[-*](?:' + _ATTRS + r')?[ \t]+(?:\[[ xX_>?-]\][ \t]+)?'
+    r'(?:(?P<item>(?:[-*](?:' + _ATTRS + r')?[ \t]+(?:\[[ xX_>?/!-]\][ \t]+)?'
     r'|(?:' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?[ \t]+))'
     r'|(?P<quote>>(?:[ \t]|$))|(?P<holder>(?:::?|\[\^[^\]\n]+\]:)[ \t]+))')
 _BLOCK_LINE = re.compile(r'(?:`{3,}|~{3,}|:{3,}|#{1,6}(?:[ \t]|$)|\|)')
@@ -1185,7 +1185,7 @@ def _hosted_quote_plus(lexer, match):
     yield match.start(1), Text, margin
     for part in re.finditer(r'>|[^>]+', outer):
         yield match.start(2) + part.start(), Punctuation if part.group() == '>' else Text, part.group()
-    for part in re.finditer(r'(\[[ xX_>?-]\])|(' + _ORDINAL + r'[.)](?:' + _ATTRS + r')?|\.(?:' + _ATTRS + r')?)|[-*](?:' + _ATTRS + r')?| ', run):
+    for part in re.finditer(r'(\[[ xX_>?/!-]\])|(' + _ORDINAL + r'[.)](?:' + _ATTRS + r')?|\.(?:' + _ATTRS + r')?)|[-*](?:' + _ATTRS + r')?| ', run):
         kind = Name.Constant if part.group(1) else Number.Integer if part.group(2) else Text if part.group() == ' ' else Punctuation
         yield match.start(3) + part.start(), kind, part.group()
     for part in re.finditer(r'>| ', quotes):
@@ -1604,7 +1604,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
              bygroups(Text, Punctuation, Text), ('deflist', 'termtail', 'heading')),
 
             # `- > +`: a list item opening a quote whose first block is a `+`.
-            (r'^(' + _MARGIN + r')((?:> )*)((?:(?:[-*](?:' + _ATTRS + r')?(?: \[[ xX_>?-]\])?|(?:'
+            (r'^(' + _MARGIN + r')((?:> )*)((?:(?:[-*](?:' + _ATTRS + r')?(?: \[[ xX_>?/!-]\])?|(?:'
              + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?) )+)((?:> )+)(\+)([ \t]*)$', _hosted_quote_plus),
             # A `+` alone behind quote prefixes is read by its column. Each `>`
             # needs a space after it: `>+`, `>>+` and `>> +` are paragraph text.
@@ -1618,7 +1618,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # Task items before plain bullets, so the state marker is its own
             # token. Only a bullet takes one, and only the `task_state` set.
             (r'^(' + _MARGIN + r')((?:[-*] +)*[-*](?:' + _ATTRS + r')?)'
-             r'( +)(\[[ xX_>?-]\])(?= +[ \t]*[^ \t\n])'
+             r'( +)(\[[ xX_>?/!-]\])(?= +[ \t]*[^ \t\n])'
              r'(?:( +)(\+)(?=[ \t]*$))?',
              bygroups(Text, Punctuation, Text, Name.Constant, Text, Operator)),
 

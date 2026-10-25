@@ -304,10 +304,14 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     `650-*` documents (a wrapped attribute line), carve-js main renders each
     as its corpus HTML, and no document already in the corpus changed its
     verdict.
+
+    The spec 0.1.13 pin adds two `666-*` documents about a closed nested body
+    at the marker column: 179 hits over 3064 documents. The previous 177 hits
+    remain, and no previous hit disappeared.
     """
     hits = [p.name for p in DOCUMENTS
             if _non_verbatim(REGRESSION, p.read_text(encoding='utf-8'))]
-    assert len(hits) == 177, len(hits)
+    assert len(hits) == 179, len(hits)
 
 
 # ----------------------------------------------------------------------------
