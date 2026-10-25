@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-10-26
+
+Carve task highlighting follows spec 0.1.13, including progress and blocked states.
+
+### Fixes
+
+- Progress `[/]`, blocked `[!]`, and open alias `[_]` task markers receive the task marker scope inside list items (#123).
+
+**Full Changelog**: https://github.com/markup-carve/pygments-carve/compare/0.1.3...0.1.4
+
 ## [0.1.3] - 2026-10-24
 
 CSV and TSV highlighting is available by language name, and Carve scopes follow the current grammar release.
