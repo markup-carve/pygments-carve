@@ -12,9 +12,6 @@ and anything built on them.
 
 There is no release on PyPI yet, so install from the repository:
 
-```sh
-pip install git+https://github.com/markup-carve/pygments-carve
-```
 
 ````markdown
 ```carve
