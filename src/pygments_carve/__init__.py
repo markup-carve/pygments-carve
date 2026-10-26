@@ -9,4 +9,4 @@ Pygments consumer start working with no further configuration.
 from pygments_carve.lexer import CarveLexer
 
 __all__ = ['CarveLexer']
-__version__ = '0.1.3'
+__version__ = '0.1.4'
