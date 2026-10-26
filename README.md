@@ -2,140 +2,26 @@
 
 [![CI](https://github.com/markup-carve/pygments-carve/actions/workflows/ci.yml/badge.svg)](https://github.com/markup-carve/pygments-carve/actions/workflows/ci.yml)
 
-[Carve](https://markup-carve.github.io/carve/) lexer for
-[Pygments](https://pygments.org/).
+Pygments lexer for Carve syntax. It follows the shared Carve grammar inventory and registers the `carve` and `crv` aliases. Read the [Carve documentation](https://markup-carve.github.io/carve/) for the language syntax.
 
-Installing it is enough. Pygments discovers the lexer through the
-`pygments.lexers` entry point, so `carve` and `crv` become working fence words
-everywhere Pygments is the highlighter - MkDocs, Sphinx, zensical, `pygmentize`,
-and anything built on them.
-
-There is no release on PyPI yet, so install from the repository:
+## Install
 
 ```sh
 pip install git+https://github.com/markup-carve/pygments-carve
 ```
 
-````markdown
-```carve
-# Heading /italic/ *bold*
-```
-````
+## Usage
 
-## Why Carve needs its own lexer
-
-Carve is a lightweight markup language whose inline delimiters deliberately
-differ from Markdown's. A Markdown lexer does not merely under-highlight a Carve
-document, it highlights it *wrongly*:
-
-| Carve         | means         | Markdown reads it as    |
-|---------------|---------------|-------------------------|
-| `*bold*`      | strong        | emphasis                |
-| `/italic/`    | emphasis      | literal slashes         |
-| `_under_`     | underline     | emphasis                |
-| `~strike~`    | strikethrough | subscript, or literal   |
-| `{=mark=}`    | highlight     | literal braces          |
-| `{^sup^}`     | superscript   | literal braces          |
-
-## What it covers
-
-Every construct in Carve's shared grammar inventory: front matter, headings,
-lists (numeric, alphabetic, roman and bare-dot markers, task items in all their
-states, markers carrying glued attributes), tables with header and alignment
-markers, blockquotes, fenced and raw blocks, container divs and figure groups,
-captions, definition lists, comments in both the line and fence spellings, and
-the definition markers for footnotes, link references and abbreviations.
-
-Inline: the emphasis families in Carve's spelling plus their braced forced
-forms, code and inline literals, math, links, images, spans, attributes,
-footnotes and inline footnotes, citations, cross-references, autolinks,
-extensions (`:name[...]`), symbols, code callouts in a fence, mentions, tags, escapes,
-hard breaks, and smart typography - all nineteen alternatives the spec grammar
-names under `arrow`, `comparison` and `typographic_symbol` plus the dash and
-ellipsis runs, which is the set Prism and highlight.js carry. Two productions of
-`smart_typography` are not scoped and are named as such in
-`tests/test_typography.py`: `smart_quote`, which is per-character contextual
-substitution rather than a run, and the braced en dash `{--}`.
-
-Inside a span the content is lexed too, so `{=a *b* c=}` marks a strong inside
-the highlight, and a link's text holds its own emphasis.
-
-## Fence bodies in their own language
-
-A fence naming a language Pygments knows is highlighted in that language, and a
-raw block's `=FORMAT` names its language the same way (`=html` reads as HTML).
-`csv` and `tsv` fences use built-in rules for separators, quoted fields, and
-doubled-quote escapes.
-Code callout markers (`<1>`) and, behind a quote, each line's `>` keep their
-own scope. A language Pygments does not know, or no language, leaves the body
-verbatim. This is the `handlecodeblocks` option of Pygments' Markdown lexer,
-with the same default; pass `handlecodeblocks=False` to read every body
-verbatim:
-
-```python
-from pygments_carve import CarveLexer
-
-lexer = CarveLexer(handlecodeblocks=False)
+```sh
+pygmentize -l carve page.crv
 ```
 
-## Deliberate limits
+## Documentation
 
-**Block openers are not anchored at column 0.** Carve opens a block at column 0
-or at an enclosing container's content column - nowhere in between - so `  # H`
-at document level is a paragraph while the same opener inside a list item is a
-real heading. Distinguishing them needs a container model. This lexer keeps the
-same trade-off the Prism and highlight.js grammars make (match at any indent,
-over-colour the rare invalid case) so the three surfaces agree; the TextMate
-grammar in carve-grammars is the surface that makes the distinction.
+- [Carve documentation](https://markup-carve.github.io/carve/)
+- [Documentation index](docs/README.md)
+- [Development](docs/development.md)
 
-**A fence is matched whole, and an unpaired opener claims nothing.** A code
-fence, a raw block, front matter and a comment fence are each matched by ONE
-rule spanning opener, body and closer, because a Pygments state cannot hold a
-body: the stack resets at every newline no rule matches, so a state pushed on
-the opener's newline is abandoned before one body character is read
-(markup-carve/pygments-carve#32). Whole is also what carries the opener's width,
-character and column into the search for its closer. The trade is at the other
-end: an opener with no closer ahead really does open a code block that runs to
-the end of what encloses it, and here it colours its own line and claims nothing
-under it - the reading the line-based sibling grammars take, because a body that
-ran to end of input inside a container would swallow the container's own closer
-and every block after it. An opener whose info string is outside the three
-shapes the grammar admits does not pair either, because such a line opens no
-block at all and the corpus renders it as a paragraph. Nor does a body longer
-than 512 lines; that bound is what keeps a file of openers that can never pair
-from costing a scan of the document per line.
+## License
 
-A fence opened inside a container pairs too: on a list item's or a
-description's marker line, with its closer at that item's content column, and
-behind a quote marker, with every line up to the closer carrying the marker.
-The same 512-line bound applies.
-
-**A paragraph is recognized where one starts after a blank line.** List markers
-and captions do not interrupt a paragraph, so `para` followed by `- x` is one
-paragraph and the second line is not scoped as a list. A regex cannot see what
-the line above was, so a paragraph that follows a heading or a closed block
-with no blank line between them keeps the block reading on its later lines.
-
-**Pygments' `stripnl` and `ensurenl` are off.** They strip a document's leading
-and trailing newlines and append one that is not there, which is reasonable for
-a programming language and not for Carve: a fence keeps the blank line at the end
-of its content, and the spec forbids encoding a blank payload line and no payload
-line identically. A caller who wants the Pygments behavior can still pass either
-option (markup-carve/pygments-carve#33).
-
-**An attribute block is one token.** `{#id .cls key="v"}` is emitted whole as
-`Name.Attribute` rather than split into parts, matching how the sibling grammars
-treat it.
-
-## Related
-
-The grammar is maintained across surfaces in
-[carve-grammars](https://github.com/markup-carve/carve-grammars) (Prism,
-highlight.js, TextMate, Tiptap), which is where the construct inventory lives.
-[highlightjs-carve](https://github.com/markup-carve/highlightjs-carve) is the
-highlight.js side. A chroma lexer for Hugo can be generated from this one with
-chroma's own `pygments2chroma_xml.py`.
-
-## Development
-
-Contributor setup, testing, and maintenance notes are in the [development guide](docs/development.md).
+[MIT](LICENSE)
