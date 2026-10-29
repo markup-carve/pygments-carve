@@ -178,7 +178,7 @@ PINS = [
     Pin('container div', ':::note\n',
         [(Punctuation, ':::'), (Keyword.Namespace, 'note')]),
     Pin('caption line', '^ A caption\n',
-        [(Punctuation, '^'), (Generic.Subheading, 'A caption')]),
+        [(Punctuation.Caption, '^'), (Generic.Subheading.Caption, 'A caption')]),
     Pin('heading', '# Title\n',
         [(Punctuation, '#'), (Generic.Heading, 'Title')]),
     Pin('star thematic break', '***\n',
@@ -228,12 +228,12 @@ PINS = [
     Pin('bare ordinal', '. item\n',
         [(Number.Integer, '.')]),
     Pin('table continuation row', '| x |\n+ a |\n',
-        [(Punctuation, '|'), (Punctuation, '|'), (Punctuation, '+'), (Punctuation, '|')],
+        [(Punctuation.Table, '|'), (Punctuation.Table, '|'), (Punctuation.Table.Continuation, '+'), (Punctuation.Table, '|')],
         note='Only directly under a row: `+ a |` anywhere else is a paragraph.'),
     Pin('table header row', '|= a | b |\n',
-        [(Operator, '|='), (Punctuation, '|'), (Punctuation, '|')]),
+        [(Operator.Table.Header, '|='), (Punctuation.Table, '|'), (Punctuation.Table, '|')]),
     Pin('table row', '| a | b |\n',
-        [(Punctuation, '|'), (Punctuation, '|'), (Punctuation, '|')]),
+        [(Punctuation.Table, '|'), (Punctuation.Table, '|'), (Punctuation.Table, '|')]),
     Pin('standalone attribute block', '{.a\n.b}\n',
         [(Name.Attribute, '{.a\n.b}')],
         note='It spans lines, which is what tells it from the inline form; a '
@@ -568,12 +568,21 @@ GUARDS = [
     Guard('a bare ordinal needs content', 29, r'(?= +[ \t]*[^ \t\n])', 0,
           '. \n', [], [(Number.Integer, '.')]),
     Guard('a continuation row ends in a pipe', 30, r'(?=[^\n]*\|[ \t]*$)', 0,
-          '| x |\n+ foo\n', [(Punctuation, '|'), (Punctuation, '|')],
-          [(Punctuation, '|'), (Punctuation, '|'), (Punctuation, '+')]),
+          '| x |\n+ foo\n', [(Punctuation.Table, '|'), (Punctuation.Table, '|')],
+          [(Punctuation.Table, '|'), (Punctuation.Table, '|'), (Punctuation.Table.Continuation, '+')]),
     Guard('a header row ends in a pipe', 31, "(?=' + _ROW_END + r')", 0,
-          '|= a | b\n', [], [(Operator, '|='), (Punctuation, '|')]),
+          '|= a | b\n', [], [(Operator.Table.Header, '|='), (Punctuation.Table, '|')]),
+    Guard('a glued alignment needs cell content', 32, r'(?=[ \t])', 0,
+          '|<x|\n', [(Punctuation.Table, '|'), (Punctuation.Table, '|')],
+          [(Punctuation.Table, '|'), (Operator.Table.Alignment, '<'),
+           (Punctuation.Table, '|')]),
+    Guard('a glued colspan marker is no alignment', 32, r'(?!<[ \t]*\|)', 0,
+          '|< |\n', [(Punctuation.Table, '|'), (Operator.Table.Colspan, '< '),
+                    (Punctuation.Table, '|')],
+          [(Punctuation.Table, '|'), (Operator.Table.Alignment, '<'),
+           (Punctuation.Table, '|')]),
     Guard('a row ends in a pipe', 32, "(?=' + _ROW_END + r')", 0,
-          '| a | b\n', [], [(Punctuation, '|'), (Punctuation, '|')]),
+          '| a | b\n', [], [(Punctuation.Table, '|'), (Punctuation.Table, '|')]),
 ]
 
 SAMPLED = [g for g in GUARDS if g.sample is not None]
@@ -849,7 +858,7 @@ def test_a_plus_line_is_markup_only_where_the_engine_reads_it(sample, markup):
     tokens = [t for t, v in LEXER.get_tokens(sample) if v == '+']
     assert tokens
     is_bare = any(line.strip() == '+' for line in sample.splitlines())
-    expected = Operator if markup and is_bare else Punctuation if markup else Text
+    expected = Operator if markup and is_bare else Punctuation.Table.Continuation if markup else Text
     assert all(t is expected for t in tokens), tokens
 
 

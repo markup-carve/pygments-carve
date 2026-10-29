@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Improvements
+
+- Table markers and captions have token subtypes for separate coloring while
+  retaining the colors of existing Pygments styles.
+
 ## [0.1.4] - 2026-10-26
 
 Carve task highlighting follows spec 0.1.13, including progress and blocked states.
