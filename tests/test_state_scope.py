@@ -114,10 +114,10 @@ CODE = [
                       (Punctuation, '`'), (String.Backtick, ' y'))),
     ('x `a\n# H', ((Punctuation, '`'), (String.Backtick, 'a'),
                    (Punctuation, '#'), (Generic.Heading, 'H'))),
-    ('| a `b | c |', ((Punctuation, '|'), (Punctuation, '`'), (String.Backtick, 'b | c '),
-                      (Punctuation, '|'))),
-    ('| a `b |{.c}', ((Punctuation, '|'), (Punctuation, '`'), (String.Backtick, 'b '),
-                      (Punctuation, '|'), (Name.Attribute, '{.c}'))),
+    ('| a `b | c |', ((Punctuation.Table, '|'), (Punctuation, '`'), (String.Backtick, 'b | c '),
+                      (Punctuation.Table, '|'))),
+    ('| a `b |{.c}', ((Punctuation.Table, '|'), (Punctuation, '`'), (String.Backtick, 'b '),
+                      (Punctuation.Table, '|'), (Name.Attribute, '{.c}'))),
 ]
 
 
@@ -192,7 +192,7 @@ def test_a_caption_under_an_image_line_is_still_a_caption():
     """The image line is the caption's host, so it opens no paragraph."""
     assert scoped_run(LEXER, '![a](u)\n^ cap') == (
         (String.Other, '![a]'), (Punctuation, '('), (Name.Tag, 'u'), (Punctuation, ')'),
-        (Punctuation, '^'), (Generic.Subheading, 'cap'))
+        (Punctuation.Caption, '^'), (Generic.Subheading.Caption, 'cap'))
     assert scoped_run(LEXER, 'text ![a](u)\n^ cap') == (
         (String.Other, '![a]'), (Punctuation, '('), (Name.Tag, 'u'), (Punctuation, ')'))
 
@@ -233,7 +233,7 @@ def test_a_quoted_fence_body_keeps_its_markers():
 
 def test_a_row_attribute_block_may_follow_the_closing_pipe():
     assert scoped_run(LEXER, '| a |{.c}\n') == (
-        (Punctuation, '|'), (Punctuation, '|'), (Name.Attribute, '{.c}'))
+        (Punctuation.Table, '|'), (Punctuation.Table, '|'), (Name.Attribute, '{.c}'))
     assert scoped_run(LEXER, '| a | b\n') == ()
 
 

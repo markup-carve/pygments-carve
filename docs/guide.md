@@ -57,6 +57,26 @@ substitution rather than a run, and the braced en dash `{--}`.
 Inside a span the content is lexed too, so `{=a *b* c=}` marks a strong inside
 the highlight, and a link's text holds its own emphasis.
 
+## Table and caption tokens
+
+Table markers use subtypes so styles can color them separately. Styles that
+define only the parent token keep their existing colors.
+
+| Construct | Token |
+|-----------|-------|
+| Header marker `\|=` | `Operator.Table.Header` |
+| Glued alignment run or alignment-only cell | `Operator.Table.Alignment` |
+| Rowspan cell `^` | `Operator.Table.Rowspan` |
+| Colspan cell `<` | `Operator.Table.Colspan` |
+| Cell boundary `\|` | `Punctuation.Table` |
+| Row-continuation `+` | `Punctuation.Table.Continuation` |
+| Caption caret `^` | `Punctuation.Caption` |
+| Plain caption text | `Generic.Subheading.Caption` |
+
+A header marker with alignment, such as `\|=<`, emits the header marker and
+alignment run as separate tokens. Whitespace around a marker-only cell stays
+in that cell's token.
+
 ## Fence bodies in their own language
 
 A fence naming a language Pygments knows is highlighted in that language, and a

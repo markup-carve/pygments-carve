@@ -75,6 +75,9 @@ __all__ = ['CarveLexer']
 #: it is content, and the line is a paragraph.
 _MARGIN = r'(?:\A\ufeff)?[ \t]*'
 
+_TABLE_ALIGN = r'(?:[<~>][\^~v]|\?[\^~v]|[<~>])'
+_HEADER_ALIGN_RUN = r'(?:[<>^v~]|\?[\^~v])*'
+
 #: One attribute block, brace to brace. Quoted values may contain a brace and
 #: an escaped quote; a single nested brace pair is allowed for a braced span
 #: written inside. A quote is never a bare character: the engine renders
@@ -1257,7 +1260,7 @@ def _continuation_row(lexer, match):
         is_row = _ROW_LINE.match(above) is not None
     decided[match.start()] = is_row
     yield match.start(1), Text, margin
-    yield match.start(2), Punctuation if is_row else Text, plus
+    yield match.start(2), Punctuation.Table.Continuation if is_row else Text, plus
     stack = ('root', 'tablerow') if is_row else ('root', 'paragraph')
     for index, token, value in lexer.get_tokens_unprocessed(rest, stack):
         yield match.start(3) + index, token, value
@@ -1549,7 +1552,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
                       using(this, state='infostring'))),
 
             # A caption line attaches to the block above or below it.
-            (r'^(' + _MARGIN + r')(\^)([ \t]+)', bygroups(Text, Punctuation, Text), 'caption'),
+            (r'^(' + _MARGIN + r')(\^)([ \t]+)', bygroups(Text, Punctuation.Caption, Text), 'caption'),
 
             # Headings. Carve has no setext form, so a `#` run is the only
             # spelling and a trailing `{...}` is NOT an attribute block here.
@@ -1652,10 +1655,10 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'^(' + _MARGIN + r')(\+)(?=[^\n]*\|[ \t]*$)([^\n]*)', _continuation_row),
             # A row ends in `|`, or in `|` and a glued row attribute block:
             # `| a | b` with no closing pipe is a paragraph.
-            (r'^(' + _MARGIN + r')(\|=[<>^v~]*)(?=' + _ROW_END + r')',
-             bygroups(Text, Operator), 'tablerow'),
-            (r'^(' + _MARGIN + r')(\|)(?=' + _ROW_END + r')',
-             bygroups(Text, Punctuation), 'tablerow'),
+            (r'^(' + _MARGIN + r')(\|=)(' + _HEADER_ALIGN_RUN + r')(?=' + _ROW_END + r')',
+             bygroups(Text, Operator.Table.Header, Operator.Table.Alignment), 'tablerow'),
+            (r'^(' + _MARGIN + r')(\|)(?:(?!<[ \t]*\|)(' + _TABLE_ALIGN + r'(?=[ \t])))?(?=' + _ROW_END + r')',
+             bygroups(Text, Punctuation.Table, Operator.Table.Alignment), 'tablerow'),
 
             # A standalone attribute block, which may span lines.
             (r'^(' + _MARGIN + r')(' + _ATTRS_LINE + r')', bygroups(Text, Name.Attribute)),
@@ -1760,19 +1763,25 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'$', Text, '#pop'),
             include('lineverbatim'),
             include('inlinecontent'),
-            (_plain_run(), Generic.Subheading),
-            (r'[^\n]', Generic.Subheading),
+            (_plain_run(), Generic.Subheading.Caption),
+            (r'[^\n]', Generic.Subheading.Caption),
         ],
 
         'tablerow': [
             (r'$', Text, '#pop'),
             # A header cell marker, optionally carrying an alignment run. The
             # pipe is part of it, so `|=` reads as one construct.
-            (r'\|=[<>^v~]*', Operator),
+            (r'(\|=)(' + _HEADER_ALIGN_RUN + r')',
+             bygroups(Operator.Table.Header, Operator.Table.Alignment)),
             # A separator row cell, in the native and the GFM spelling.
             (r'(?<=\|)[ \t]*:?-{2,}:?[ \t]*(?=\|)', Punctuation),
-            (r'(?<=\|)[ \t]*[<>^v~]{1,2}[ \t]*(?=\|)', Operator),
-            (r'\|', Punctuation),
+            (r'(?<=\|)[ \t]*\^[ \t]*(?=\|)', Operator.Table.Rowspan),
+            (r'(?<=\|)[ \t]*<[ \t]*(?=\|)', Operator.Table.Colspan),
+            (r'(?<=\|)[ \t]*[<>^v~]{1,2}[ \t]*(?=\|)', Operator.Table.Alignment),
+            # `|< |` is a colspan cell, not an alignment run (as in the TextMate grammar).
+            (r'(\|)(?!<[ \t]*\|)(' + _TABLE_ALIGN + r')(?=[ \t])',
+             bygroups(Punctuation.Table, Operator.Table.Alignment)),
+            (r'\|', Punctuation.Table),
             include('inlinecontent'),
             # An unclosed code run in a row stops at the row's closing pipe.
             (r'(?<!`)(`+)(?!`)([^\n]*?)(?=\|(?:' + _ATTRS + r')?[ \t]*$)',
