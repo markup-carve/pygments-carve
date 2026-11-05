@@ -81,14 +81,18 @@ _HEADER_ALIGN_RUN = r'(?:[<>^v~]|\?[\^~v])*'
 #: One attribute of an attribute list, strictly: `{~ x ~}` must stay braced
 #: strikethrough rather than read as an alignment block.
 _ATTR_ITEM = (r'(?:[.#][A-Za-z0-9_][\w-]*|:[A-Za-z0-9-]*'
-              r'|[A-Za-z_][\w-]*(?:=(?:"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\''
-              r'|[^\s{}|"\'\\]+))?)')
+              r'|[A-Za-z_][\w-]*=(?:"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\''
+              r'|[^\s{}|"\'\\]+)|[A-Za-z][\w-]*)')
 
 #: A cell's braced alignment block, glued to `|` or `|=`: `|={>} Qty |`,
 #: `|{> .num} 12 |`, `|{?v} x |` (carve#5091 D3). Groups: brace, alignment,
 #: attribute list, padding, brace.
 _CELL_ALIGN_BLOCK = (r'(?:(?<=\|)|(?<=\|=))(\{)(' + _TABLE_ALIGN + r')'
                      r'((?: +' + _ATTR_ITEM + r')*)( *)(\})(?= )')
+
+#: The same block with alignment only; ordinary attributes make a span glyph
+#: content, so only this one may hold a placeholder.
+_CELL_ALIGN_ONLY = (r'(?:(?<=\|)|(?<=\|=))(\{)(' + _TABLE_ALIGN + r')( *)(\})')
 
 #: One attribute block, brace to brace. Quoted values may contain a brace and
 #: an escaped quote; a single nested brace pair is allowed for a braced span
@@ -1788,11 +1792,11 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'(\|=)(' + _HEADER_ALIGN_RUN + r')',
              bygroups(Operator.Table.Header, Operator.Table.Alignment)),
             # A braced alignment block, optionally holding a span placeholder.
-            (_CELL_ALIGN_BLOCK + r'( +)(\^)( *)(?=\|)',
-             bygroups(Name.Attribute, Operator.Table.Alignment, Name.Attribute, Name.Attribute,
+            (_CELL_ALIGN_ONLY + r'( +)(\^)( *)(?=\|)',
+             bygroups(Name.Attribute, Operator.Table.Alignment, Name.Attribute,
                       Name.Attribute, Text, Operator.Table.Rowspan, Text)),
-            (_CELL_ALIGN_BLOCK + r'( +)(<)( *)(?=\|)',
-             bygroups(Name.Attribute, Operator.Table.Alignment, Name.Attribute, Name.Attribute,
+            (_CELL_ALIGN_ONLY + r'( +)(<)( *)(?=\|)',
+             bygroups(Name.Attribute, Operator.Table.Alignment, Name.Attribute,
                       Name.Attribute, Text, Operator.Table.Colspan, Text)),
             (_CELL_ALIGN_BLOCK,
              bygroups(Name.Attribute, Operator.Table.Alignment, Name.Attribute, Name.Attribute,

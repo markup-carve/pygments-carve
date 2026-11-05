@@ -47,6 +47,20 @@ def test_braced_strikethrough_in_a_cell_is_not_alignment():
     assert (Generic.Deleted, ' x ') in tokens
 
 
+def test_an_attributed_alignment_block_holds_no_span_placeholder():
+    tokens = scoped('|{> .x} ^ |\n')
+    assert (Operator.Table.Alignment, '>') in tokens
+    assert (Operator.Table.Rowspan, '^') not in tokens
+
+
+@pytest.mark.parametrize('source, aligned', [
+    ('|{> _foo} x |\n', False),
+    ('|{> _k=v} x |\n', True),
+])
+def test_a_bare_key_does_not_start_with_an_underscore(source, aligned):
+    assert ((Operator.Table.Alignment, '>') in scoped(source)) is aligned
+
+
 def test_an_unpadded_alignment_block_is_content():
     assert not [v for t, v in scoped('|{>}x |\n') if t is Operator.Table.Alignment]
 
