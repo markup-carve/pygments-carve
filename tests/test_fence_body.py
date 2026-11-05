@@ -140,9 +140,10 @@ PINS = [
      ((Punctuation, '---'), (Keyword.Type, 'yaml'), (Text, '\n'),
       (Comment.Special, 'title: x\n\nother: y\n'), (Punctuation, '---'), (Text, '\n')),
      FRONTMATTER_RULE),
-    ('front matter with no closer is a thematic break',
+    # carve#5016: an opener is claimed without a closer lookahead.
+    ('front matter with no closer runs to the end',
      '---\ntitle: x\n',
-     ((Punctuation, '---'), (Text, '\ntitle: x\n')),
+     ((Punctuation, '---'), (Text, '\n'), (Comment.Special, 'title: x\n')),
      FRONTMATTER_RULE),
 ]
 

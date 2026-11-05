@@ -65,7 +65,7 @@ define only the parent token keep their existing colors.
 | Construct | Token |
 |-----------|-------|
 | Header marker `\|=` | `Operator.Table.Header` |
-| Glued alignment run or alignment-only cell | `Operator.Table.Alignment` |
+| Braced alignment, deprecated glued run, or alignment-only cell | `Operator.Table.Alignment` |
 | Rowspan cell `^` | `Operator.Table.Rowspan` |
 | Colspan cell `<` | `Operator.Table.Colspan` |
 | Cell boundary `\|` | `Punctuation.Table` |
@@ -73,8 +73,11 @@ define only the parent token keep their existing colors.
 | Caption caret `^` | `Punctuation.Caption` |
 | Plain caption text | `Generic.Subheading.Caption` |
 
-A header marker with alignment, such as `\|=<`, emits the header marker and
-alignment run as separate tokens. Whitespace around a marker-only cell stays
+Cell alignment is written in the cell's leading braces, such as `\|={>}` or
+`\|{> .num}`. The braces and any attributes are `Name.Attribute`, and the
+alignment symbols are `Operator.Table.Alignment`. The deprecated glued prefix,
+such as `\|=<`, still emits the header marker and alignment run as separate
+tokens. Whitespace around a marker-only cell stays
 in that cell's token.
 
 ## Fence bodies in their own language

@@ -208,11 +208,12 @@ def test_a_definition_behind_a_non_marker_is_prose(line):
     ':: A term that\n   wraps\n+\n: d\n',
     ':: t\n+ a |\n: d\n',
 ])
-def test_a_plus_line_under_a_term_is_the_term_s_text(source):
-    """corpus 593: `:: t`, `+` renders the term `t +`, not a continuation."""
+def test_a_plus_line_under_a_term_is_paragraph_text(source):
+    """A term is one line (carve#4894): `:: t`, `+`, `: d` is a term and the paragraph `+ : d`."""
     tokens = run(source)
     assert (Punctuation, '+') not in tokens
-    assert (Punctuation, ':') in tokens
+    assert (Operator, '+') not in tokens
+    assert (Punctuation, ':') not in tokens
 
 
 def test_a_lone_plus_under_a_description_is_still_a_continuation_marker():
