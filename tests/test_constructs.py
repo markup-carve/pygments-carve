@@ -36,7 +36,7 @@ from coverage import load_constructs, payload_of, scope_of
 
 #: construct name -> why this lexer does not scope its payload.
 #:
-#: One entry, where the shared inventory and the engine disagree and this lexer
+#: Entries where the shared inventory and the engine disagree and this lexer
 #: follows the engine. Every other construct in the inventory carries a scope.
 #: The mechanism is kept because the inventory grows: a construct added upstream
 #: shows up here as a failure, and the choice is then to lex it or to write down
@@ -47,6 +47,23 @@ NOT_COVERED = {
                     'in carve 0.1.11), so scoping it was an over-color; the marker '
                     'inside a fence is `callout marker in fence`, and still scoped',
 }
+
+#: Rows the 0.1.14 spec turned into text, which the inventory still samples
+#: (markup-carve/carve-grammars#830).
+_STALE_TEXT = {
+    'typography arrow deprecated reversed': 'markup-carve/carve#4815',
+    'typography arrow deprecated forward': 'markup-carve/carve#4815',
+    'typography arrow deprecated bidirectional': 'markup-carve/carve#4815',
+    'typography symbol copyright': 'markup-carve/carve#4808',
+    'typography symbol registered': 'markup-carve/carve#4808',
+    'ordered marker alpha': 'markup-carve/carve#4811, one space after a letter marker',
+    'ordered marker roman': 'markup-carve/carve#4811, one space after a roman marker',
+    'ordered marker roman lowercase run': 'markup-carve/carve#4811, one space after a roman marker',
+    'ordered marker roman uppercase run': 'markup-carve/carve#4811, one space after a roman marker',
+    'ordered marker roman word': 'markup-carve/carve#4811, one space after a roman marker',
+}
+NOT_COVERED.update({name: 'text since %s (markup-carve/carve-grammars#830)' % why
+                    for name, why in _STALE_TEXT.items()})
 
 LEXER = CarveLexer()
 CONSTRUCTS = load_constructs() if inventory.available() else []

@@ -11,10 +11,9 @@ the org (carve-grammars#373, fixed there by carve-grammars#377).
 
 SO THE SET IS READ FROM THE SPEC, IN PLACE. `spec/resources/grammar.ebnf` gives
 
-    arrow              = "<--" | "-->" | "<-->" | "<==" | "==>" | "<=>"
-                       | "<-" | "->" | "<->" ;
+    arrow              = "<--" | "-->" | "<-->" | "<==" | "==>" | "<=>" ;
     comparison         = "!=" | "<=" | ">=" ;
-    typographic_symbol = "(c)" | "(r)" | "(tm)" | "+-" ;
+    typographic_symbol = "(tm)" | "+-" ;
     em_dash = "---" ;  en_dash = "--" ;  ellipsis = "..." ;
 
 and the assertions below are generated from those productions rather than from a
@@ -67,7 +66,7 @@ spec = pytest.mark.skipif(
 
 #: The productions of `smart_typography` this lexer scopes, and the token type
 #: each lands in. Arrows and comparisons are directional and relational
-#: operators; the dash runs and the ellipsis are punctuation; the `(c)` family
+#: operators; the dash runs and the ellipsis are punctuation; the `(tm)` family
 #: and `+-` render a fixed character, which is what `Name.Constant` already
 #: means here for the `:name:` shortcode.
 COVERED = {
@@ -134,9 +133,9 @@ def test_the_covered_productions_are_all_of_smart_typography():
 
 
 @spec
-def test_there_are_nineteen_alternatives():
-    """The count Prism and highlight.js carry, and the floor for the sweep below."""
-    assert len(ALTERNATIVES) == 19, [a for _, a, _ in ALTERNATIVES]
+def test_there_are_fourteen_alternatives():
+    """The spec's count since carve#4815 and carve#4808, and the floor for the sweep below."""
+    assert len(ALTERNATIVES) == 14, [a for _, a, _ in ALTERNATIVES]
 
 
 @spec
@@ -159,7 +158,7 @@ def typography_parts(source):
     The rules are found by the alternatives they hold rather than by position,
     so inserting a rule above them does not silently move the mutation.
     """
-    wanted = {alt for _, alt, _ in ALTERNATIVES} or {'<-->', '...', '(c)'}
+    wanted = {alt for _, alt, _ in ALTERNATIVES} or {'<-->', '...', '(tm)'}
     out = []
     for index, (_, _, text) in enumerate(state_rules(source, INLINE)):
         literal = re.search(r"\(r'([^']*)'", text)
@@ -200,7 +199,7 @@ def without_alternative(source, rule_index, part_index):
 
 
 @spec
-def test_the_parts_found_are_the_nineteen():
+def test_the_parts_found_are_the_fourteen():
     """Guard the guard: a reader that finds three branches sweeps three."""
     assert len(PARTS) == len(ALTERNATIVES), [p[2] for p in PARTS]
 
@@ -219,7 +218,7 @@ def test_every_alternative_is_load_bearing(rule, part, text):
     broken = [alt for _, alt, ttype in ALTERNATIVES
               if scoped(mutant, sample_for(alt)) != ((ttype, alt),)]
     assert broken, (
-        'branch %r was removed from inline rule %d and all nineteen '
+        'branch %r was removed from inline rule %d and all fourteen '
         'alternatives still scope whole, so it carries nothing.' % (text, rule))
 
 

@@ -401,9 +401,11 @@ def test_the_corpus_reads_the_two_rules_the_ticket_was_filed_on():
     entries arrived with the bump to carve 21879d7, each a `---` at a list
     item's content column; no document already in the corpus moved. The
     `616-*-16` entry arrived with the bump to carve 99906e2, a new document
-    that carve-js main renders as its corpus HTML.
+    that carve-js main renders as its corpus HTML. The 0.1.14 corpus adds
+    `132-*-5`, `762-*-3`, `854-*` and the three `933-*` spaced-break documents.
     """
     assert sorted(_changed(MUTANTS[_rule('dash thematic break')])) == [
+        '132-thematic-break-requires-contiguous-markers-5',
         '249-trailing-whitespace-after-a-block-marker',
         '326-a-column-0-line-after-a-container-s-last-block-when-that-block-'
         'left-no-paragraph-open-4',
@@ -414,6 +416,11 @@ def test_the_corpus_reads_the_two_rules_the_ticket_was_filed_on():
         '556-a-closed-block-leaves-no-frame-for-the-line-below-2',
         '566-an-opener-past-a-hosted-container-s-column-opens-there-5',
         '616-a-line-is-read-in-the-container-whose-column-it-reaches-16',
+        '762-a-closed-footnote-child-releases-a-flush-line-3',
+        '854-an-indented-dash-line-neither-opens-nor-closes-frontmatter',
+        '933-a-spaced-thematic-break-is-tested-before-a-list-marker-on-every-line',
+        '933-a-spaced-thematic-break-is-tested-before-a-list-marker-on-every-line-4',
+        '933-a-spaced-thematic-break-is-tested-before-a-list-marker-on-every-line-5',
     ]
     assert len(_changed(DEFLIST_MUTANTS[_deflist_rule('description')],
                         limit=51)) == 51
@@ -427,8 +434,8 @@ def test_the_dash_break_keeps_a_trailing_whitespace_run():
     behind. Corpus `249-trailing-whitespace-after-a-block-marker` is the
     document that turns on it.
     """
-    assert scoped_run(LEXER, '---  \n') == ((Punctuation, '---  '),)
-    assert scoped_run(MUTANTS[_rule('dash thematic break')], '---  \n') == (
+    assert scoped_run(LEXER, 'p\n\n---  \n') == ((Punctuation, '---  '),)
+    assert scoped_run(MUTANTS[_rule('dash thematic break')], 'p\n\n---  \n') == (
         (Punctuation, '---'),)
 
 
@@ -463,9 +470,11 @@ GUARDS = [
           [(Punctuation, '---'), (Punctuation, '---')],
           [(Punctuation, '---'), (Keyword.Type, 'yaml'),
            (Comment.Special, 't: x\n'), (Punctuation, '---')]),
-    Guard('a front matter closer takes no trailing text', 0, '$', 0,
+    # With no closer the front matter runs to the end (carve#5016).
+    Guard('a front matter closer takes no trailing text', 0, r'(?=\n|\Z)', 0,
           '---yaml\nt: x\n--- junk\n',
-          [(Punctuation, '---'), (Punctuation, '---')],
+          [(Punctuation, '---'), (Keyword.Type, 'yaml'),
+           (Comment.Special, 't: x\n--- junk\n')],
           [(Punctuation, '---'), (Keyword.Type, 'yaml'),
            (Comment.Special, 't: x\n'), (Punctuation, '---')]),
     # The blank-line guard changes no token at all; what it changes is the cost.
@@ -513,7 +522,8 @@ GUARDS = [
           [(Punctuation, '```'), (String.Backtick, 'x\n'), (Punctuation, '```')]),
     Guard('a star break is the whole line', 13, '$', 0, '*** text\n',
           [], [(Punctuation, '*** ')]),
-    Guard('a dash break is the whole line', 14, '$', 0, '--- text\n',
+    # Not at the document start, where `--- text` opens front matter (carve#5016).
+    Guard('a dash break is the whole line', 14, '$', 0, 'p\n\n--- text\n',
           [(Punctuation, '---')], [(Punctuation, '--- ')]),
     Guard('an underscore break is the whole line', 15, '$', 0, '___ text\n',
           [], [(Punctuation, '___ ')]),

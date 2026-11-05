@@ -191,17 +191,17 @@ PINS = [
         [(Name.Variable.Magic, '@user')]),
     Pin('tag', 'a #tag b',
         [(Name.Variable.Instance, '#tag')]),
-    Pin('arrow and comparison', 'a -> b',
-        [(Operator, '->')],
-        note='One rule, nineteen alternatives across four; a per-rule pin '
+    Pin('arrow and comparison', 'a --> b',
+        [(Operator, '-->')],
+        note='One rule, fourteen alternatives across four; a per-rule pin '
              'cannot see one going missing. tests/test_typography.py is what '
              'holds the alternation down.'),
     Pin('en dash', 'a -- b',
         [(Punctuation, '--')]),
     Pin('ellipsis', 'a ... b',
         [(Punctuation, '...')]),
-    Pin('typographic symbol', 'a (c) b',
-        [(Name.Constant, '(c)')]),
+    Pin('typographic symbol', 'a (tm) b',
+        [(Name.Constant, '(tm)')]),
 ]
 
 

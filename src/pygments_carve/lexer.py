@@ -78,6 +78,18 @@ _MARGIN = r'(?:\A\ufeff)?[ \t]*'
 _TABLE_ALIGN = r'(?:[<~>][\^~v]|\?[\^~v]|[<~>])'
 _HEADER_ALIGN_RUN = r'(?:[<>^v~]|\?[\^~v])*'
 
+#: One attribute of an attribute list, strictly: `{~ x ~}` must stay braced
+#: strikethrough rather than read as an alignment block.
+_ATTR_ITEM = (r'(?:[.#][A-Za-z0-9_][\w-]*|:[A-Za-z0-9-]*'
+              r'|[A-Za-z_][\w-]*(?:=(?:"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\''
+              r'|[^\s{}|"\'\\]+))?)')
+
+#: A cell's braced alignment block, glued to `|` or `|=`: `|={>} Qty |`,
+#: `|{> .num} 12 |`, `|{?v} x |` (carve#5091 D3). Groups: brace, alignment,
+#: attribute list, padding, brace.
+_CELL_ALIGN_BLOCK = (r'(?:(?<=\|)|(?<=\|=))(\{)(' + _TABLE_ALIGN + r')'
+                     r'((?: +' + _ATTR_ITEM + r')*)( *)(\})(?= )')
+
 #: One attribute block, brace to brace. Quoted values may contain a brace and
 #: an escaped quote; a single nested brace pair is allowed for a braced span
 #: written inside. A quote is never a bare character: the engine renders
@@ -151,22 +163,25 @@ _FENCE_INFO = (
 _FENCE_BODY_LINES = 512
 
 
-#: An ordered marker's value: a letter, or a roman run in ONE case (`Vim.` is
-#: prose).
-_ORDINAL = r'(?:\d+|[A-Za-z]|[ivxlcdm]+|[IVXLCDM]+)'
+#: An ordered marker and its delimiter. The value is a number, a letter, or a
+#: roman run in ONE case (`Vim.` is prose). A letter or roman value with `.`
+#: needs two spaces after it and any glued attributes, so `J. R. R. Tolkien`
+#: stays prose (carve#4811).
+_ORDERED = (r'(?:\d+[.)]|(?:[A-Za-z]|[ivxlcdm]+|[IVXLCDM]+)'
+            r'(?:\)|\.(?=(?:' + _ATTRS + r')?  )))')
 
 #: A run of block markers a line may carry before its content: bullets, ordered
 #: markers and quote markers, in any nesting. A definition written after one is
 #: still a definition (`- [t]: /t`), so the definition rules take this prefix
 #: rather than losing the line to the marker rules below them.
 _MARKER_RUN = (
-    r'(?:(?:>+|(?:' + _ORDINAL + r'[.)]|[-*.])(?:' + _ATTRS + r')?)[ \t]+)*'
+    r'(?:(?:>+|(?:' + _ORDERED + r'|[-*.])(?:' + _ATTRS + r')?)[ \t]+)*'
 )
 
 #: A line that opens some other block, which ends a definition list.
 _OTHER_OPENER = (
     r'(?:#{1,6}[ \t]|`{3,}|~{3,}|:{3,}|>|\^[ \t]|\||%%|\*\[|\[[^\]\n]*\]:'
-    r'|(?:[-*]|' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')? )'
+    r'|(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')? )'
 )
 
 
@@ -201,7 +216,7 @@ _PARAGRAPH_START = (r'(?:\A|(?<=\n\n))(?=[^ \t\n])'
 #: `- # H`, `: - item`. The rest of the line is then lexed as a block of its own.
 _NESTED = (
     r'(?:#{1,6}[ \t]|>(?=[ \t]|$)|`{3,}|~{3,}|:{3,}|\|(?=[^\n]*\|[ \t]*$)'
-    r'|\+(?=[ \t]*$)|(?:[-*]|' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?(?= +[ \t]*[^ \t\n]))'
+    r'|\+(?=[ \t]*$)|(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')?(?= +[ \t]*[^ \t\n]))'
 )
 _NESTED_TAIL = r'(?:([ \t]+)(?=' + _NESTED + r')([^\n]*))?'
 
@@ -527,7 +542,7 @@ _ANY_FENCE_INFO = r'(?= ?(?:=[a-zA-Z][\w+.-]*|{0})?[ \t]*$)'.format(_FENCE_INFO)
 
 #: A fence on a list item's marker line, its closer at the item's content column.
 _ITEM_FENCE = _ContainerFence(
-    r'^((?:\A\ufeff)?)([ \t]*)((?:[-*]|' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?)'
+    r'^((?:\A\ufeff)?)([ \t]*)((?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')?)'
     r'( +)((`|~)\6{2,})' + _ANY_FENCE_INFO
     + r'([ \t]*)(=[a-zA-Z][\w+.-]*|[a-zA-Z][\w+#.-]*)?([^\n]*)(\n)',
     r'((?:[^\n]*\n)*?)([ \t]*)(\5\6*)([ \t]*)')
@@ -934,8 +949,8 @@ def _decisions(lexer, text):
 
 _BLOCK_OPENER = re.compile(
     r'(?:(?P<item>(?:[-*](?:' + _ATTRS + r')?[ \t]+(?:\[[ xX_>?/!-]\][ \t]+)?'
-    r'|(?:' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?[ \t]+))'
-    r'|(?P<quote>>(?:[ \t]|$))|(?P<holder>(?:::?|\[\^[^\]\n]+\]:)[ \t]+))')
+    r'|(?:' + _ORDERED + r'|\.)(?:' + _ATTRS + r')?[ \t]+))'
+    r'|(?P<quote>>(?:[ \t]|$))|(?P<holder>(?::(?!:)|\[\^[^\]\n]+\]:)[ \t]+))')
 _BLOCK_LINE = re.compile(r'(?:`{3,}|~{3,}|:{3,}|#{1,6}(?:[ \t]|$)|\|)')
 
 
@@ -1188,7 +1203,7 @@ def _hosted_quote_plus(lexer, match):
     yield match.start(1), Text, margin
     for part in re.finditer(r'>|[^>]+', outer):
         yield match.start(2) + part.start(), Punctuation if part.group() == '>' else Text, part.group()
-    for part in re.finditer(r'(\[[ xX_>?/!-]\])|(' + _ORDINAL + r'[.)](?:' + _ATTRS + r')?|\.(?:' + _ATTRS + r')?)|[-*](?:' + _ATTRS + r')?| ', run):
+    for part in re.finditer(r'(\[[ xX_>?/!-]\])|(' + _ORDERED + r'(?:' + _ATTRS + r')?|\.(?:' + _ATTRS + r')?)|[-*](?:' + _ATTRS + r')?| ', run):
         kind = Name.Constant if part.group(1) else Number.Integer if part.group(2) else Text if part.group() == ' ' else Punctuation
         yield match.start(3) + part.start(), kind, part.group()
     for part in re.finditer(r'>| ', quotes):
@@ -1237,7 +1252,7 @@ def _description_marker(lexer, match):
 
 
 _FLUSH_BLOCK = re.compile(
-    r'(?![-*](?:' + _ATTRS + r')?[ \t]|(?:' + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?[ \t])[^ \t\n]')
+    r'(?![-*](?:' + _ATTRS + r')?[ \t]|(?:' + _ORDERED + r'|\.)(?:' + _ATTRS + r')?[ \t])[^ \t\n]')
 
 
 def _definition_plus(lexer, match):
@@ -1393,21 +1408,20 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
         'block': [
             # Front matter, matched WHOLE, only at the very start of the
             # document. `\A` is what keeps a `---yaml` line mid-document from
-            # opening one, and the required closer is what keeps a state from
-            # having to span the body - a state cannot, because none of its
-            # rules matched a bare newline and Pygments resets the stack at
-            # every line it cannot match (markup-carve/pygments-carve#32).
+            # opening one, and matching whole is what keeps a state from having
+            # to span the body - a state cannot, because none of its rules
+            # matched a bare newline and Pygments resets the stack at every line
+            # it cannot match (markup-carve/pygments-carve#32).
             #
-            # A closer is REQUIRED here for the same reason the grammar
-            # requires one: `frontmatter` carries a `&(...)` guard demanding a
-            # closing `---` ahead, and "with no closer the guard fails, so a
-            # bare `---` at document start is an ordinary thematic break". The
-            # thematic-break rule below is what then takes the line.
-            (r'\A(\ufeff?)(---)([a-zA-Z][\w-]*)?([ \t]*\n)'
+            # The opener is claimed without a closer lookahead: with no closing
+            # `---` the front matter runs to the end of the document
+            # (carve#5016). The format token is letters and digits after at
+            # most one space (carve#4402).
+            (r'\A(\ufeff?)(---)(?:( )?([A-Za-z0-9]+))?([ \t]*)(\n|\Z)'
              r'((?:[^\n]*\n)*?)'
-             r'(---)([ \t]*)$',
-             bygroups(Text, Punctuation, Keyword.Type, Text, Comment.Special,
-                      Punctuation, Text)),
+             r'(?:(---)([ \t]*)(?=\n|\Z)|([^\n]*)\Z)',
+             bygroups(Text, Punctuation, Text, Keyword.Type, Text, Text,
+                      Comment.Special, Punctuation, Text, Comment.Special)),
 
             # A comment fence is matched WHOLE - opener, body and closer in
             # one rule - and the one-line comment follows it, because `%%%`
@@ -1608,7 +1622,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
 
             # `- > +`: a list item opening a quote whose first block is a `+`.
             (r'^(' + _MARGIN + r')((?:> )*)((?:(?:[-*](?:' + _ATTRS + r')?(?: \[[ xX_>?/!-]\])?|(?:'
-             + _ORDINAL + r'[.)]|\.)(?:' + _ATTRS + r')?) )+)((?:> )+)(\+)([ \t]*)$', _hosted_quote_plus),
+             + _ORDERED + r'|\.)(?:' + _ATTRS + r')?) )+)((?:> )+)(\+)([ \t]*)$', _hosted_quote_plus),
             # A `+` alone behind quote prefixes is read by its column. Each `>`
             # needs a space after it: `>+`, `>>+` and `>> +` are paragraph text.
             (r'^(' + _MARGIN + r')((?:> [ \t]*)+)(\+)([ \t]*)$', _quoted_plus),
@@ -1627,7 +1641,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
 
             (r'^(' + _MARGIN + r')((?:[-*] +)*[-*](?:' + _ATTRS + r')?)( +)(\+)([ \t]*)$',
              bygroups(Text, Punctuation, Text, Operator, Text)),
-            (r'^(' + _MARGIN + r')(' + _ORDINAL + r'[.)](?:' + _ATTRS + r')?|\.(?:' + _ATTRS + r')?)( +)(\+)([ \t]*)$',
+            (r'^(' + _MARGIN + r')(' + _ORDERED + r'(?:' + _ATTRS + r')?|\.(?:' + _ATTRS + r')?)( +)(\+)([ \t]*)$',
              bygroups(Text, Number.Integer, Text, Operator, Text)),
 
             # Bullets. A run of markers on one line opens nested lists at once
@@ -1643,7 +1657,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # Ordered markers: numeric, alphabetic, roman, and the bare `.` that
             # continues the enclosing sequence. Any of them may carry glued
             # attributes.
-            (r'^(' + _MARGIN + r')(' + _ORDINAL + r'[.)](?:' + _ATTRS + r')?)(?= +[ \t]*[^ \t\n])'
+            (r'^(' + _MARGIN + r')(' + _ORDERED + r'(?:' + _ATTRS + r')?)(?= +[ \t]*[^ \t\n])'
              + _NESTED_TAIL,
              bygroups(Text, Number.Integer, Text, using(this, state='nested'))),
             (r'^(' + _MARGIN + r')(\.(?:' + _ATTRS + r')?)(?= +[ \t]*[^ \t\n])' + _NESTED_TAIL,
@@ -1694,14 +1708,14 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             include('block'),
         ],
 
-        # The lines a term continues onto. A lone `+` or a `+ a |` line here is
-        # the term's text, not a continuation marker or row: the engine renders
-        # `:: t`, `+` as the term `t +`.
+        # The line after a term. A term is one line (carve#4894), so a line that
+        # is not blank, a `:` or `::` line or another opener ends the list and
+        # is read fresh: `:: a`, `b`, `: c` is a term and a paragraph.
         'termtail': [
             (r'^(?=[ \t]*(?:\n|\Z)|' + _MARGIN + r'(?:::? |' + _OTHER_OPENER + r'|' + _INTERRUPTER + r'))',
              Text, '#pop'),
             (r'\n', Text),
-            include('inline'),
+            (r'^', Text, '#pop:2'),
         ],
 
         # A fence body, reached only through the whole-fence rules above, which
@@ -1773,6 +1787,19 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # pipe is part of it, so `|=` reads as one construct.
             (r'(\|=)(' + _HEADER_ALIGN_RUN + r')',
              bygroups(Operator.Table.Header, Operator.Table.Alignment)),
+            # A braced alignment block, optionally holding a span placeholder.
+            (_CELL_ALIGN_BLOCK + r'( +)(\^)( *)(?=\|)',
+             bygroups(Name.Attribute, Operator.Table.Alignment, Name.Attribute, Name.Attribute,
+                      Name.Attribute, Text, Operator.Table.Rowspan, Text)),
+            (_CELL_ALIGN_BLOCK + r'( +)(<)( *)(?=\|)',
+             bygroups(Name.Attribute, Operator.Table.Alignment, Name.Attribute, Name.Attribute,
+                      Name.Attribute, Text, Operator.Table.Colspan, Text)),
+            (_CELL_ALIGN_BLOCK,
+             bygroups(Name.Attribute, Operator.Table.Alignment, Name.Attribute, Name.Attribute,
+                      Name.Attribute)),
+            # A header span placeholder: `|= ^ |`, `|= < |` (carve#4980).
+            (r'(?<=\|=)( +)(\^)( *)(?=\|)', bygroups(Text, Operator.Table.Rowspan, Text)),
+            (r'(?<=\|=)( +)(<)( *)(?=\|)', bygroups(Text, Operator.Table.Colspan, Text)),
             # A separator row cell, in the native and the GFM spelling.
             (r'(?<=\|)[ \t]*:?-{2,}:?[ \t]*(?=\|)', Punctuation),
             (r'(?<=\|)[ \t]*\^[ \t]*(?=\|)', Operator.Table.Rowspan),
@@ -1798,7 +1825,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
         # The marker run a definition line may carry, tokenized the way the
         # marker rules in `block` tokenize the same markers on their own.
         'markerrun': [
-            (_ORDINAL + r'[.)](?:' + _ATTRS + r')?', Number.Integer),
+            (_ORDERED + r'(?:' + _ATTRS + r')?', Number.Integer),
             (r'\.(?:' + _ATTRS + r')?', Number.Integer),
             (r'[-*](?:' + _ATTRS + r')?', Punctuation),
             (r'>+', Punctuation),
@@ -2080,25 +2107,28 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
              bygroups(Punctuation, using(this, state='inserted'), Punctuation)),
 
             # A mention and a tag, each one token: the sigil is part of the name
-            # rather than punctuation beside it.
-            (r'(?<![\w/])@[\w][\w.-]*', Name.Variable.Magic),
-            (r'(?<![\w&])\#[\w][\w-]*', Name.Variable.Instance),
+            # rather than punctuation beside it. A name holds an ASCII letter:
+            # `#123` and `@5` are text (carve#4809).
+            (r'(?<![\w/])@(?=[\w.-]*[A-Za-z])[\w][\w.-]*', Name.Variable.Magic),
+            (r'(?<![\w&])\#(?=[\w-]*[A-Za-z])[\w][\w-]*', Name.Variable.Instance),
 
             # Smart typography: the spec grammar's `arrow`, `comparison` and
-            # `typographic_symbol` plus the dash and ellipsis runs. Nineteen
-            # alternatives, the set Prism and highlight.js carry.
+            # `typographic_symbol` plus the dash and ellipsis runs. Fourteen
+            # alternatives: `->`, `<-`, `<->` (carve#4815), `(c)` and `(r)`
+            # (carve#4808) are text.
             #
             # Longest first, or a shorter alternative that prefixes a longer one
-            # wins: `<->` before `<-`, `<==` before `<=`. `<==>` is deliberately
+            # wins: `<-->` before `<--`, `<==` before `<=`. `<==>` is deliberately
             # NOT one of them - it is `<==` and then a literal `>`, rendering
-            # `⇐>`, and matching it whole was an over-colour.
-            (r'<-->|<--|-->|<=>|<==|==>|<->|<-|->|!=|<=|>=', Operator),
+            # `⇐>`, and matching it whole was an over-colour. An arrow needs its
+            # exact hyphen run: `a--->b` is an em dash and `>` (carve#4851).
+            (r'<-->|<--(?!-)|(?<!-)-->|<=>|<==|==>|!=|<=|>=', Operator),
             (r'(?<!-)---(?!-)|(?<!-)--(?!-)', Punctuation),
             (r'\.\.\.', Punctuation),
-            # `(c) (r) (tm) +-` render fixed characters, the same kind of thing
-            # the `:name:` shortcode above produces, so they share its type.
-            # Lowercase only: `(C)` and `(TM)` stay literal.
-            (r'\(c\)|\(r\)|\(tm\)|\+-', Name.Constant),
+            # `(tm) +-` render fixed characters, the same kind of thing the
+            # `:name:` shortcode above produces, so they share its type.
+            # Lowercase only: `(TM)` stays literal.
+            (r'\(tm\)|\+-', Name.Constant),
         ],
 
         # The tail of a directive: selector, option slots, and whatever else was
