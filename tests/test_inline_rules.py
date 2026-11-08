@@ -158,6 +158,8 @@ PINS = [
         note='The label is lexed as inline content, a character run at a time.'),
     Pin('reference link', 'a [t][r] b',
         [(Name.Entity, '[t]'), (Name.Label, '[r]')]),
+    Pin('reference across a line stays verbatim', '[*x*\ny][]\n', [],
+        note='CARVE-P3-004: the interior is not rescanned, so `*x*` is text.'),
     Pin('label carrying attributes', 'a [t]{.c} b',
         [(Name.Entity, '['), (Name.Entity, 't]'),
          (Name.Attribute, '{.c}')]),

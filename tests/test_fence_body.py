@@ -79,7 +79,7 @@ def test_the_indices_still_name_the_fence_rules():
     rules = state_rules(SOURCE, BLOCK)
     assert '---' in rules[FRONTMATTER_RULE][2]
     for index in (RAW_PAIR_RULE, CODE_PAIR_RULE):
-        assert r'(\2)(\3\4*)' in rules[index][2], 'block rule %d is no longer a fence pair' % index
+        assert '_FENCE_TAIL' in rules[index][2], 'block rule %d is no longer a fence pair' % index
     assert '=[a-zA-Z]' in rules[RAW_PAIR_RULE][2], 'block rule %d is not the RAW pair' % RAW_PAIR_RULE
     for index in (LONE_RAW_RULE, LONE_CODE_RULE):
         text = rules[index][2]
@@ -130,9 +130,16 @@ PINS = [
       (Name.Builtin, 'js'), (Text, '\n'), (String.Backtick, '  y\n'),
       (Text, '  '), (Punctuation, '```'), (Text, '\n')),
      CODE_PAIR_RULE),
-    ('an opener that never pairs claims nothing under it',
+    # carve#4018: at column 0 the closer is optional.
+    ('an opener with no closer runs to the end',
      '```js\nx = *b*\n',
-     ((Punctuation, '```'), (Name.Builtin, 'js'), (Text, '\nx = '),
+     ((Punctuation, '```'), (Name.Builtin, 'js'), (Text, '\n'),
+      (String.Backtick, 'x = *b*\n')),
+     CODE_PAIR_RULE),
+    ('an indented opener that never pairs claims nothing under it',
+     '- x\n\n  ```js\n  y = *b*\n',
+     ((Punctuation, '-'), (Text, ' x\n\n  '), (Punctuation, '```'),
+      (Name.Builtin, 'js'), (Text, '\n  y = '),
       (Punctuation, '*'), (Generic.Strong, 'b'), (Punctuation, '*'), (Text, '\n')),
      LONE_CODE_RULE),
     ('front matter survives a blank line',
@@ -309,10 +316,15 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     The spec 0.1.13 pin adds two `666-*` documents about a closed nested body
     at the marker column: 179 hits over 3064 documents. The previous 177 hits
     remain, and no previous hit disappeared.
+
+    The spec 0.1.14 pin (carve 336b0e15) raises it to 215 with the reader
+    unchanged. The reader then follows carve#4018 and #4807 - a column-0
+    opener with no closer runs to the end, and a language token followed by
+    invalid metadata still opens - and pairs 78 more bodies: 293.
     """
     hits = [p.name for p in DOCUMENTS
             if _non_verbatim(REGRESSION, p.read_text(encoding='utf-8'))]
-    assert len(hits) == 179, len(hits)
+    assert len(hits) == 293, len(hits)
 
 
 # ----------------------------------------------------------------------------
@@ -392,13 +404,21 @@ def test_a_paired_body_is_one_the_engine_renders():
     inline code span, like `11-fenced-code-16`. Eight `617-*` hold a `csv` or
     `tsv` fence under `{table}`, which the engine renders as a table, not as
     code. carve-js main renders all eleven as their corpus HTML.
+
+    The spec 0.1.14 pin (carve 336b0e15) moves the list with the reader
+    unchanged: `11-fenced-code-16`, seven `531-*` and three `633-*` leave, and
+    ten documents join. Three more join with carve#4018: `678-*` and
+    `851-*-2` hold an indented opener the lexer does not pair, so the reader
+    sees the column-0 closer below it open an empty fence, and in `782-*-13`
+    an attribute line sits between the `+` and the fence it attaches, so the
+    first-blank end of carve#5304 is not seen and the body runs on.
     """
     unconfirmed = sorted({path.stem for path, source, html in _documents_with_html()
                           for body in fencebodies.bodies(source)
                           if fencebodies.confirmed(source, html, body) is False})
     assert unconfirmed == [
-        '11-fenced-code-16',
         '276-a-fence-opened-on-a-list-marker-line-body-below-the-content-column-7',
+        '325-an-attribute-line-after-a-continuation-marker-attributes-the-attached-block-8',
         '476-an-item-s-fence-is-read-once-whatever-block-it-follows',
         '476-an-item-s-fence-is-read-once-whatever-block-it-follows-2',
         '478-a-definition-body-s-open-code-fence-ends-at-a-line-below-its-column-3',
@@ -407,13 +427,9 @@ def test_a_paired_body_is_one_the_engine_renders():
         '509-a-fence-closer-below-a-nested-item-s-column-ends-containers-down-to-its-owner-10',
         '509-a-fence-closer-below-a-nested-item-s-column-ends-containers-down-to-its-owner-11',
         '509-a-fence-closer-below-a-nested-item-s-column-ends-containers-down-to-its-owner-12',
-        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only-10',
-        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only-11',
-        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only-13',
-        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only-2',
-        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only-3',
-        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only-4',
-        '531-an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only-5',
+        '556-a-closed-block-leaves-no-frame-for-the-line-below',
+        '556-a-closed-block-leaves-no-frame-for-the-line-below-2',
+        '556-a-closed-block-leaves-no-frame-for-the-line-below-3',
         '558-a-container-boundary-is-read-at-the-container-s-own-column-4',
         '558-a-container-boundary-is-read-at-the-container-s-own-column-5',
         '561-a-line-block-payload-span-pairs-past-the-content-column-2',
@@ -425,9 +441,15 @@ def test_a_paired_body_is_one_the_engine_renders():
         '617-csv-and-tsv-table-bodies-6',
         '617-csv-and-tsv-table-bodies-8',
         '617-csv-and-tsv-table-bodies-9',
-        '633-a-first-block-marker-on-an-indented-opener-reads-two-columns-20',
-        '633-a-first-block-marker-on-an-indented-opener-reads-two-columns-24',
-        '633-a-first-block-marker-on-an-indented-opener-reads-two-columns-28',
+        '637-definition-body-note-and-fence-owner-boundaries-5',
+        '650-a-wrapped-attribute-line-interrupts-like-a-one-line-attribute-line-3',
+        '678-a-below-column-fence-stays-in-a-definition-paragraph',
+        '782-a-first-block-plus-hands-its-block-to-the-host-as-the-host-reads-it-11',
+        '782-a-first-block-plus-hands-its-block-to-the-host-as-the-host-reads-it-13',
+        '851-a-first-block-plus-shape-reads-the-one-attach-rule-2',
+        '873-a-delimited-body-s-overlapping-header-and-footer-make-no-header-cells',
+        '923-a-line-block-stanza-remains-open-after-a-paired-payload-run',
+        '923-a-line-block-stanza-remains-open-after-a-paired-payload-run-2',
     ], unconfirmed
 
 
@@ -448,12 +470,14 @@ def test_the_reader_reports_live_markup_when_there_is_some():
 # ----------------------------------------------------------------------------
 
 def test_a_body_longer_than_the_bound_does_not_pair():
-    """The bound is a real ceiling, and this is where it is stated."""
-    def paired(n):
-        doc = '```\n' + 'x\n' * n + '```\n'
+    """The bound is a real ceiling for an indented opener, and this is where
+    it is stated. At column 0 nothing is searched ahead (carve#4018)."""
+    def paired(n, margin):
+        doc = margin + '```\n' + (margin + 'x\n') * n + margin + '```\n'
         return any(t is String.Backtick and '\n' in v for t, v in LEXER.get_tokens(doc))
-    assert paired(_FENCE_BODY_LINES)
-    assert not paired(_FENCE_BODY_LINES + 1)
+    assert paired(_FENCE_BODY_LINES, '  ')
+    assert not paired(_FENCE_BODY_LINES + 1, '  ')
+    assert paired(_FENCE_BODY_LINES + 1, '')
 
 
 def test_the_closer_search_is_linear():
@@ -497,13 +521,25 @@ def _elapsed(source):
 #: a rule that paired on it would bury the paragraph, which is the direction
 #: that loses a reader's text. The last has no corpus case and came out of
 #: review of this change.
-INVALID_INFO = [
+#: A language token followed by invalid metadata still opens a fence in that
+#: language (carve#4807), so these bury their body like any conforming opener.
+RECOVERED_INFO = [
     ('```js title="x"\ncode\n```\n', 'code', '11-fenced-code-11'),
     ('```php [Composer] "x"\ncode\n```\n', 'code', '11-fenced-code-12'),
     ('```js\t"T"\nx\n```\n', 'x', '258-code-fence-metadata-slots-must-be-a-space-too-4'),
+    ('```js bad\n# heading\n```\n', '# heading', None),
+    ('```js {1,3}\na\n```\n', 'a', '925-a-code-fence-with-invalid-metadata-keeps-its-language'),
+]
+
+#: The fallback stays where no language token ends at whitespace, a quote,
+#: `{` or `[`, or where the line holds a run as long as the opener. The body
+#: check is on the FIRST line; the closer below opens a fence of its own.
+INVALID_INFO = [
     ('```\tphp\nx\n```\n', 'x', '330-a-tab-after-a-fence-or-a-frontmatter-opener-depends-on-where-it-sits'),
     ('```  php\nx = 1\n```\n', 'x = 1', '263-a-code-fence-opener-takes-exactly-one-space'),
-    ('```js bad\n# heading\n```\n', '# heading', None),
+    ('``` {.x}\ny\n```\n', 'y', None),
+    ('```js, x\ny\n```\n', 'y', None),
+    ('```js foo``` z\ny\n```\n', 'y', None),
     # A raw block takes no title and no label, so its guard is the format word
     # alone - a separate line, and separately proved.
     ('```=html "T"\npayload\n```\n', 'payload', None),
@@ -511,7 +547,9 @@ INVALID_INFO = [
 
 
 def _buries(lexer, source, body):
-    return any(t is String.Backtick and body in v for t, v in lexer.get_tokens(source))
+    """Whether a fence body starts with ``body``. A fallback line's inline code
+    span holds it too, but after the info string (carve#4807)."""
+    return any(t is String.Backtick and v.startswith(body) for t, v in lexer.get_tokens(source))
 
 
 def _without_guard(marker):
@@ -526,7 +564,7 @@ def _without_guard(marker):
     return build_verbatim(SOURCE.replace(lines[0] + '\n', '', 1))
 
 
-UNGUARDED = _without_guard('+ _FENCE_INFO +')
+UNGUARDED = _without_guard('+ _RECOVERED_INFO +')
 UNGUARDED_RAW = _without_guard('(?= ?=[a-zA-Z]')
 
 
@@ -552,8 +590,21 @@ def test_the_guard_is_what_refuses_an_invalid_info_string(sample, body, case):
 def test_the_corpus_says_those_openers_render_a_paragraph(sample, body, case):
     """The pins above are the corpus's reading, not this suite's invention."""
     html = (CORPUS / (case + '.html')).read_text(encoding='utf-8')
-    assert '<pre>' not in html, html
-    assert '<p><code>' in html, html
+    assert html.startswith('<p><code>'), html
+    assert '<pre><code></code></pre>' in html, html
+
+
+@pytest.mark.parametrize('sample,body,case', RECOVERED_INFO, ids=lambda v: None)
+def test_a_recovered_opener_claims_its_body(sample, body, case):
+    assert _buries(LEXER, sample, body), sample
+
+
+@corpus
+@pytest.mark.parametrize('sample,body,case',
+                         [c for c in RECOVERED_INFO if c[2]], ids=lambda v: None)
+def test_the_corpus_says_those_openers_keep_their_language(sample, body, case):
+    html = (CORPUS / (case + '.html')).read_text(encoding='utf-8')
+    assert html.startswith('<pre><code class="language-'), html
 
 
 # ----------------------------------------------------------------------------

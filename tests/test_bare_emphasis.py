@@ -185,8 +185,8 @@ def test_a_run_closes_at_its_first_guarded_closer():
     assert _emphasized(LEXER, 'a =f=>g= b', 'f')
     assert _emphasized(LEXER, '(/x/) and a./b/', 'x')
     assert _emphasized(LEXER, '(/x/) and a./b/', 'b')
-    # `=>` is not an arrow any more, so `a =>foo= b` marks `>foo`.
-    assert _emphasized(LEXER, 'a =>foo= b', '>foo')
+    # `=` followed by `>` never opens (CARVE-P3-022, corpus `737-*-3`).
+    assert not _emphasized(LEXER, 'a =>foo= b', '>foo')
 
 
 # ----------------------------------------------------------------------------
@@ -269,6 +269,11 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
     hold a delimiter followed by a combining mark or a keycap.
     The spec 0.1.12 corpus adds `19-*-35`, which the unguarded rules also
     misread while the guarded lexer keeps its delimiters as text.
+
+    The spec 0.1.14 pin (carve 336b0e15) moves the list: the three `484-*`
+    entries leave, and `01-emphasis-6` (carve#4836), `704-*`, `737-*-3`
+    (`=>` never opens), `776-*-2` and `925-unicode-*` join. The guarded
+    lexer reports zero on every one of them.
     """
     hits = sorted(p.stem for p in DOCUMENTS
                   if _case(p)[1] is not None
@@ -278,6 +283,7 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         '01-emphasis-11',
         '01-emphasis-14',
         '01-emphasis-2',
+        '01-emphasis-6',
         '01-emphasis-9',
         '129-emphasis-opener-slash-adjacency',
         '129-emphasis-opener-slash-adjacency-2',
@@ -285,29 +291,25 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         '131-emphasis-span-closes-before-a-following-delimiter',
         '19-smart-typography-dashes-and-quotes-35',
         '20-smart-typography-arrows-and-symbols',
-        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters'
-        '-10',
-        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters'
-        '-5',
-        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters'
-        '-7',
-        '465-an-underscore-pair-in-text-is-escaped-where-the-line-would-pair-'
-        'it',
+        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters-1'
+        '0',
+        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters-5',
+        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters-7',
+        '465-an-underscore-pair-in-text-is-escaped-where-the-line-would-pair-it',
         '467-a-bare-closer-does-not-reach-inside-a-link-destination',
         '467-a-bare-closer-does-not-reach-inside-a-link-destination-2',
-        '484-a-delimiter-after-an-underscore-or-slash-opens-only-when-that-on'
-        'e-pairs',
-        '484-a-delimiter-after-an-underscore-or-slash-opens-only-when-that-on'
-        'e-pairs-2',
-        '484-a-delimiter-after-an-underscore-or-slash-opens-only-when-that-on'
-        'e-pairs-6',
         '595-a-bare-closer-does-not-reach-inside-a-cross-reference-2',
         '600-a-delimiter-that-is-part-of-a-larger-character-is-text',
         '600-a-delimiter-that-is-part-of-a-larger-character-is-text-14',
         '600-a-delimiter-that-is-part-of-a-larger-character-is-text-2',
         '600-a-delimiter-that-is-part-of-a-larger-character-is-text-7',
+        '704-a-non-ascii-letter-does-not-block-a-bare-delimiter',
+        '737-model-inline-frames-and-html-attributes-3',
         '76-doubled-emphasis-delimiters',
+        '776-an-attribute-block-that-attaches-to-nothing-is-text-from-the-first'
+        '-pass-2',
         '79-two-char-delimiter-runs',
+        '925-unicode-letters-block-bare-emphasis',
     ], hits
 
 

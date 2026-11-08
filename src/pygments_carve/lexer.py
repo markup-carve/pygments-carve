@@ -124,7 +124,7 @@ _ATTRS_UNCHECKED = _ATTRS.replace(r'(?!(?<=[{\s])[.#](?!\w[\w-]*[\s}]))', '')
 _ATTRS_LINE = _ATTRS.replace(r'[^{}\n', r'[^{}')
 
 
-def _label(depth=3):
+def _label(depth=3, inner=r'[^\[\]\\\n]|\\.'):
     """A bracketed label that may itself contain ``depth`` levels of brackets.
 
     A regex cannot match arbitrarily balanced brackets, and a link label in
@@ -132,7 +132,6 @@ def _label(depth=3):
     the common shapes matching instead of stopping at the first inner bracket,
     which is what a naive ``\\[[^\\]]*\\]`` does.
     """
-    inner = r'[^\[\]\\\n]|\\.'
     pattern = r'(?:' + inner + r')*'
     for _ in range(depth):
         pattern = r'(?:' + inner + r'|\[' + pattern + r'\])*'
@@ -165,6 +164,45 @@ _FENCE_INFO = (
 #: the fence rules below: this is the bound that keeps an unpairable opener from
 #: costing a scan of the rest of the document.
 _FENCE_BODY_LINES = 512
+
+
+#: The recovery of carve#4807: a language token that ends at whitespace, a
+#: quote, `{` or `[` and is followed by invalid metadata still opens a fence in
+#: that language, unless the rest of the line holds a run as long as the opener
+#: (```` ```js foo``` ```` stays an inline code span). `\3` is the opener run.
+_RECOVERED_INFO = (
+    r' ?[A-Za-z0-9_+#./-]+(?=[^\S\n]|[\ufeff"\u201c\u201d{\[])(?![^\n]*\3)[^\n]*$'
+)
+
+#: A column-0 opener right under a marker line ending in `+` (`- +`, `[^n]: +`).
+#: Group 2 takes part, empty, and the body runs to a closer within the bound
+#: or, unclosed, to its first blank (carve#5304). A `+` alone on its line, or after prose, has no such end.
+_ATTACHED = r'(?<=[-*.:>)][ \t]\+\n)|(?<=[-*.:>)][ \t]\+[ \t]\n)'
+
+#: True where group 2 is a real margin: `(?!\2)` fails on an empty one, and an
+#: empty `\2` is never preceded by a blank character at a line start.
+_INDENTED = r'(?=(?!\2)|\2(?<=[ \t]))'
+
+#: A column-0 opener line whose info string neither conforms nor recovers. It
+#: is paragraph text, and its run opens an inline code span.
+_FALLBACK = (
+    r'(?:\A\ufeff)?(?:`{3,}|~{3,})(?! ?(?:' + _FENCE_INFO + r')?[ \t]*$)'
+    r'(?! ?[A-Za-z0-9_+#./-]+(?=[^\S\n]|[\ufeff"\u201c\u201d{\[])(?![^\n]*(?:```|~~~))[^\n]*$)'
+)
+
+#: The body and closer of a fence pair. At column 0 (group 2 did not take part)
+#: the closer is optional and the body runs to it or to the end of the document
+#: (carve#4018, PART 0 S1). Nothing is searched ahead, so no line is scanned
+#: twice. An indented opener sits in a container the lexer does not track, so
+#: it still pairs within `_FENCE_BODY_LINES` or opens nothing.
+_FENCE_TAIL = (
+    r'((?(2)(?:' + _INDENTED + r'(?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?'
+    r'|(?!' + _INDENTED + r')(?:(?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?(?=\3\4*[ \t]*$)'
+    r'|(?:(?!\3\4*[ \t]*$)(?![ \t]*(?:\n|\Z))[^\n]*(?:\n|\Z))*))'
+    r'|(?:(?!\3\4*[ \t]*$)[^\n]*(?:\n|\Z))*))'
+    r'((?(2)\2))((?(2)(?:' + _INDENTED + r'\3\4*|(?!' + _INDENTED + r')(?:\3\4*)?)'
+    r'|(?:\3\4*)?))([ \t]*)$'
+)
 
 
 #: An ordered marker and its delimiter. The value is a number, a letter, or a
@@ -367,6 +405,43 @@ def _closers(text, rex, masked=False):
     return hit
 
 
+def _continues_past(text, start, end):
+    """Whether a run opened at ``start`` in block position keeps every later
+    line up to ``end`` at least one source column past its opener
+    (CARVE-P2-035). Mid-line, the inline production governs it alone."""
+    line = text.rfind('\n', 0, start) + 1
+    if not _BLOCK_PREFIX.fullmatch(text, line, start):
+        return True
+    column = start - line
+    at = text.find('\n', start, end)
+    while at != -1:
+        nxt = text.find('\n', at + 1, end)
+        stop = end if nxt == -1 else nxt
+        body = _QUOTE_PREFIX.match(text, at + 1, stop).end()
+        if body < stop and body - (at + 1) <= column:
+            return False
+        at = nxt
+    return True
+
+
+_QUOTE_PREFIX = re.compile(r'[ \t]*(?:>[ \t]*)*')
+_BLOCK_PREFIX = re.compile(
+    r'[ \t]*' + _MARKER_RUN + r'(?:(?:\[\^[^\]\n]+\]:|::?|\+)[ \t]+)?')
+
+
+#: A mention or a tag name, as the inline rules below scope them.
+_NAME = re.compile(r'(?<![^\W_])(?<!/)(?:@(?=[\w.-]*[A-Za-z])\w[\w.-]*|\#(?=[\w-]*[A-Za-z])\w[\w-]*)')
+
+
+def _in_name(text, start, at):
+    """Whether offset ``at`` sits inside a mention or tag name opened after ``start``."""
+    sigil = max(text.rfind('@', start, at), text.rfind('#', start, at))
+    if sigil == -1:
+        return False
+    name = _NAME.match(text, sigil)
+    return name is not None and name.end() > at
+
+
 class _Scan:
     """A rule whose closer is looked up in an index instead of scanned for.
 
@@ -387,11 +462,12 @@ class _Scan:
     A closer must start on the opener's line, or with ``reach='paragraph'``
     before the paragraph ends. ``masked`` skips closers inside a tighter
     construct. ``whole=False`` makes the rule a guard: it matches the opener
-    alone, and only when a closer exists.
+    alone, and only when a closer exists. ``own`` is a bare span's delimiter:
+    content holding it between two word characters forms no span (carve#4836).
     """
 
     def __init__(self, opener, rest, close, least=0, stop=False, masked=False,
-                 reach='line', whole=True):
+                 reach='line', whole=True, own=None, column=False):
         self.opener = opener
         self.pattern = opener + rest
         self.close = close if isinstance(close, tuple) else (close,)
@@ -400,6 +476,8 @@ class _Scan:
         self.masked = masked
         self.reach = reach
         self.whole = whole
+        self.own = own
+        self.column = column
         self._compiled = {}
 
     def compile(self, flags):
@@ -421,6 +499,8 @@ class _ScanMatcher:
         self.opener = re.compile(scan.opener, flags)
         self.full = re.compile(scan.pattern, flags)
         self.close = tuple(re.compile(r'(?=(' + c + r'))', flags) for c in scan.close)
+        self.own = scan.own and re.compile(
+            r'(?=((?<=[^\W_])' + re.escape(scan.own) + r'(?=[^\W_])))', flags)
 
     def end(self, text, opened):
         scan = self.scan
@@ -432,8 +512,20 @@ class _ScanMatcher:
             i = bisect.bisect_left(starts, at if scan.stop and n == 0 else floor)
             if i == len(starts) or starts[i] >= limit or starts[i] < floor:
                 return None
+            if self.own is not None and self._holds_own(text, opened.end(), starts[i]):
+                return None
             at = ends[i]
         return at
+
+    def _holds_own(self, text, start, stop):
+        inner = _closers(text, self.own, 'bare')[0]
+        i = bisect.bisect_left(inner, start)
+        while i < len(inner) and inner[i] < stop:
+            # A mention or tag name is not the span's own region: `_@a_b_` forms.
+            if not _in_name(text, start, inner[i]):
+                return True
+            i += 1
+        return False
 
     def match(self, text, pos=0):
         opened = self.opener.match(text, pos)
@@ -441,6 +533,8 @@ class _ScanMatcher:
             return None
         end = self.end(text, opened)
         if end is None:
+            return None
+        if self.scan.column and not _continues_past(text, pos, end):
             return None
         if not self.scan.whole:
             return opened
@@ -540,6 +634,42 @@ class _ContainerFenceScan(_ScanMatcher):
         return found.end() if found else None
 
 
+class _MarkerCommentFence(_Scan):
+    """A `%%%` comment fence on a list item's or a description's marker line.
+
+    Its body is every following line that is blank or reaches the content
+    column. The first line holding an exact-width closer closes it, at any
+    column (corpus 864); a line further left ends it unclosed (carve#4907).
+    """
+
+    def matcher(self, flags):
+        return _MarkerCommentFenceScan(self, flags)
+
+
+class _MarkerCommentFenceScan(_ScanMatcher):
+
+    def end(self, text, opened):
+        column = opened.start(5) - opened.start(2)
+        closer = re.compile(r'[ \t>]*%%{%d}(?!%%)' % len(opened.group(5)))
+        at = opened.end()
+        while at < len(text):
+            stop = text.find('\n', at)
+            stop = len(text) if stop == -1 else stop
+            if closer.match(text, at, stop):
+                return stop
+            content = len(text[at:stop]) - len(text[at:stop].lstrip(' \t>'))
+            if at + content < stop and content < column:
+                return at
+            at = stop + 1
+        return len(text)
+
+
+_MARKER_COMMENT_FENCE = _MarkerCommentFence(
+    r'^((?:\A\ufeff)?)([ \t]*)((?:>[ \t]?)*(?:(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')?) +'
+    r'(?:(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')? +)*)()(%%%+)([^\n]*)(\n|\Z)',
+    r'([\s\S]*?)(?:([ \t]*)(%%%+)([^\n]*))?', ())
+
+
 #: A fence info string a container fence may carry: a raw format, or a
 #: conforming code fence info string.
 _ANY_FENCE_INFO = r'(?= ?(?:=[a-zA-Z][\w+.-]*|{0})?[ \t]*$)'.format(_FENCE_INFO)
@@ -574,6 +704,11 @@ _IMAGE_REF = r'(!' + _LABEL + r')(' + _LABEL + r')'
 _LINK = _Scan(r'(' + _LABEL + r')(\()', r'([^)\n]*)(\))', r'\)', stop=True)
 _LINK_REF = r'(' + _LABEL + r')(' + _LABEL + r')'
 _LINK_ATTRS = r'(' + _LABEL + r')(?=' + _ATTRS + r')'
+#: A reference whose text or label crosses a line stays verbatim, interior and
+#: all (CARVE-P3-004): `[*x*` / `y][]` keeps its asterisks. A line break inside
+#: is one that keeps the paragraph open.
+_LINE_LABEL = _label(inner=r'[^\[\]\\\n]|\\.|\n(?![ \t]*(?:\n|\Z|[#>|]|`{3}|~{3}|[-*+:] |\d+[.)] ))')
+_CROSS_LINE_REF = r'!?(?!' + _LABEL + _LABEL + r')' + _LINE_LABEL + _LINE_LABEL
 _CROSS_REFERENCE = r'(</)(#[\w-]+)(>)'
 _AUTOLINK = _Scan(r'(<)', r'([a-zA-Z][\w+.-]*:[^>\s]+|[^>\s@]+@[^>\s]+)(>)', r'[>\s]',
                   stop=True)
@@ -1432,16 +1567,16 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # also matches the line form.
             #
             # Whole is what makes an UNTERMINATED opener fall through to the
-            # line form, which is the rule: an opener with no matching closer
-            # ahead "does NOT open a block. The line degrades to a
-            # `comment_line`." A separate state cannot decide that - it has
-            # already been entered by the time the input runs out
-            # (markup-carve/pygments-carve#30). It is also the only shape that
-            # can carry the opener's own WIDTH (`%%%%` closes on `%%%%` alone,
-            # which is how a comment nests a shorter fence) and its COLUMN
-            # (every line up to the closer carries the opener's indent or is
-            # blank; a line further left has left the container, so a closer
-            # past it belongs to no open fence) into the search for the closer.
+            # line form. The spec opens the block without a closer and hides
+            # the rest of its host (carve#4907), but a column-0 `%%%` is as
+            # often the closer of a marker-line fence this lexer does not pair
+            # (`- %%%` ... `%%%`), and opening there would hide every later
+            # line; the line form hides only its own. Whole is also the only
+            # shape that can carry the opener's own WIDTH (`%%%%` closes on
+            # `%%%%` alone, which is how a comment nests a shorter fence) and
+            # its COLUMN (every line up to the closer carries the opener's
+            # indent or is blank; a line further left has left the container,
+            # so a closer past it belongs to no open fence) into the search.
             #
             # The `(?!\2)` on the blank alternative is not decoration. Without
             # it both alternatives match a whitespace-only line whenever the
@@ -1482,8 +1617,12 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # closer search never backtracks the way a second, overlapping
             # alternative made it (markup-carve/pygments-carve#34).
             #
-            # `_FENCE_BODY_LINES` IS THE BOUND ON THAT SEARCH, and it is load
-            # bearing. An opener that never finds its closer scans what is left
+            # AT COLUMN 0 THE CLOSER IS OPTIONAL (`_FENCE_TAIL`, carve#4018):
+            # the body runs to the closer or the end of the document, and
+            # nothing is searched ahead. An INDENTED opener still has to pair.
+            #
+            # `_FENCE_BODY_LINES` IS THE BOUND ON THE INDENTED SEARCH, and it is
+            # load bearing. An opener that never finds its closer scans what is left
             # of the document, so a file of openers that cannot pair - `` ```x ``
             # repeated - costs one scan per line and the whole is QUADRATIC.
             # Measured unbounded, doubling the input from 12000 to 96000
@@ -1493,16 +1632,16 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # the ratio near 2 that carve-grammars' `scan-superlinear.mjs` calls
             # linear.
             #
-            # WHAT THE BOUND TRADES AWAY: a fence whose body is longer than
-            # `_FENCE_BODY_LINES` does not pair, and its opener degrades to the
+            # WHAT THE BOUND TRADES AWAY: an indented fence whose body is longer
+            # than `_FENCE_BODY_LINES` does not pair, and its opener degrades to the
             # lone-fence line below. The longest body in the 1564-document spec
             # corpus is 3 lines and the longest across the spec's own
             # documentation is 76.
             #
             # THE OPENER MUST CONFORM BEFORE IT CLAIMS A BODY. `_FENCE_INFO` is
-            # the guard: an info string outside the grammar's three shapes is an
-            # INVALID-FENCE FALLBACK and opens nothing, so pairing on one would
-            # bury a paragraph the corpus renders. It is a lookahead rather than
+            # the guard, with the language recovery of `_RECOVERED_INFO`: any
+            # other info string is an INVALID-FENCE FALLBACK and opens nothing,
+            # so pairing on one would bury a paragraph the corpus renders. It is a lookahead rather than
             # the capture groups themselves, so the groups stay the ones the
             # lone-fence rules below use and the two readings of an opener line
             # cannot drift apart.
@@ -1511,40 +1650,38 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # verbatim. It is emitted as one token including the `=`, because
             # the format word without its sigil is not the construct. It takes
             # no title and no label, so its guard is the format word alone.
-            (r'^((?:\A\ufeff)?)([ \t]*)((`|~)\4{2,})'
+            (r'^((?:\A\ufeff)?)(?:([ \t]+|' + _ATTACHED + r')|)((`|~)\4{2,})'
              r'(?= ?=[a-zA-Z][\w+.-]*[ \t]*$)'
-             r'([ \t]*)(=[a-zA-Z][\w+.-]*)([^\n]*)(\n)'
-             r'((?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?)'
-             r'(\2)(\3\4*)([ \t]*)$',
+             r'([ \t]*)(=[a-zA-Z][\w+.-]*)([^\n]*)(\n)' + _FENCE_TAIL,
              _fenced(6, Text, Text, Punctuation, None, Text, Keyword.Type,
                      using(this, state='infostring'), Text,
                      _BODY, Text, Punctuation, Text)),
-            (r'^((?:\A\ufeff)?)([ \t]*)((`|~)\4{2,})'
-             r'(?= ?(?:' + _FENCE_INFO + r')?[ \t]*$)'
-             r'([ \t]*)([a-zA-Z][\w+#.-]*)?([^\n]*)(\n)'
-             r'((?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?)'
-             r'(\2)(\3\4*)([ \t]*)$',
+            (r'^((?:\A\ufeff)?)(?:([ \t]+|' + _ATTACHED + r')|)((`|~)\4{2,})'
+             r'(?= ?(?:' + _FENCE_INFO + r')?[ \t]*$|' + _RECOVERED_INFO + r')'
+             r'([ \t]*)([A-Za-z0-9_+#./-]+)?([^\n]*)(\n)' + _FENCE_TAIL,
              _fenced(6, Text, Text, Punctuation, None, Text, Name.Builtin,
                      using(this, state='infostring'), Text,
                      _BODY, Text, Punctuation, Text)),
 
-            # A FENCE LINE THIS LEXER DOES NOT PAIR: an opener with no matching
-            # closer ahead, and the closer of a pair the rules above did not
-            # take. It colours the delimiter run and its info string and claims
-            # nothing under it.
+            # A FENCE LINE THIS LEXER DOES NOT PAIR: an indented opener with no
+            # matching closer ahead, an opener whose info string falls back,
+            # and the closer of a pair the rules above did not take. It colours
+            # the delimiter run and its info string and claims nothing under it.
             #
-            # WHAT THAT TRADES AWAY, written down rather than left to be
-            # rediscovered: an unterminated fence at document level really does
-            # open a code block that runs to the end of what encloses it, and
-            # here it does not. The line-based sibling grammars make the same
-            # trade for the same reason - inside a container an opener with no
-            # closer opens nothing, and a body that ran to end of input there
-            # would swallow the container's own closer and every block after
-            # it. Burial is the direction that loses a reader's text
+            # A column-0 line here is an info-string fallback, or a fence
+            # attached by `+` that found no closer: both are paragraph text
+            # whose run opens an inline code span to the paragraph end, which
+            # is also where an attached fence ends (carve#5304), so the inline
+            # rules take it.
+            #
+            # WHAT THAT TRADES AWAY: an unterminated INDENTED fence runs to the
+            # end of its container, and here it opens nothing, because the
+            # lexer does not know where that container ends and a body run to
+            # the end of input would bury every block after it
             # (markup-carve/pygments-carve#30).
-            (r'^(' + _MARGIN + r')(`{3,}|~{3,})([ \t]*)(=[a-zA-Z][\w+.-]*)',
+            (r'^(?!' + _FALLBACK + r')(' + _MARGIN + r')(`{3,}|~{3,})([ \t]*)(=[a-zA-Z][\w+.-]*)',
              bygroups(Text, Punctuation, Text, Keyword.Type)),
-            (r'^(' + _MARGIN + r')(`{3,}|~{3,})([ \t]*)([a-zA-Z][\w+#.-]*)?([^\n]*)',
+            (r'^(?!' + _FALLBACK + r')(' + _MARGIN + r')(`{3,}|~{3,})([ \t]*)([a-zA-Z][\w+#.-]*)?([^\n]*)',
              bygroups(Text, Punctuation, Text, Name.Builtin,
                       using(this, state='infostring'))),
 
@@ -1600,11 +1737,11 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\[\^)([^\]\n]+)(\]:)( )(?![ \t]*$)',
              bygroups(Text, using(this, state='markerrun'), Punctuation, Name.Label,
                       Punctuation, Text), 'defbody'),
-            # No marker run on the abbreviation form: an abbreviation is defined
-            # at document level only, so `- *[HTML]: ...` and `> *[HTML]: ...`
-            # are paragraph text (corpus 179, 180).
-            (r'^(' + _MARGIN + r')(\*\[)([A-Za-z0-9]+)(\]:)( )(?![ \t]*$)',
-             bygroups(Text, Punctuation, Name.Entity, Punctuation, Text), 'defbody'),
+            # An abbreviation is defined in every container, with document
+            # scope (CARVE-P12-026), so `- *[HTML]: ...` defines it too.
+            (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\*\[)([A-Za-z0-9]+)(\]:)( )(?![ \t]*$)',
+             bygroups(Text, using(this, state='markerrun'), Punctuation, Name.Entity,
+                      Punctuation, Text), 'defbody'),
             # A link reference definition only where the line COMPLETES the
             # production: a title and an attribute block each behind exactly one
             # space, then only trailing spaces or tabs, so `[a]: /u zzz` and
@@ -1621,6 +1758,10 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # A definition-list term. Its `:` descriptions are scoped only in
             # the `deflist` state it opens, so a `:` line with no term above it
             # stays a paragraph.
+            # A comment fence on a marker line hides its body too (corpus 337).
+            (_MARKER_COMMENT_FENCE,
+             bygroups(Text, Text, using(this, state='markerrun'), Text, Comment.Preproc,
+                      Comment, Text, Comment, Text, Comment.Preproc, Comment)),
             (r'^(' + _MARGIN + r')(::)( +[ \t]*)(?=[^ \t\n])',
              bygroups(Text, Punctuation, Text), ('deflist', 'termtail', 'heading')),
 
@@ -2002,7 +2143,10 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # one, and `{--}x-}` is a dash followed by text, not a deletion.
             (r'\{--\}', Punctuation),
             (_Braced(r'(\{-)' + _WHOLE, r'([\s\S]+?)(-\})'), bygroups(Punctuation, using(this, state='deleted'), Punctuation)),
-            (_Scan(r'(\{%)' + _WHOLE, r'([\s\S]*?)(%\})', r'%\}', reach='block'), bygroups(Comment.Preproc, Comment, Comment.Preproc)),
+            # A run in block position continues only on lines past its `{`
+            # (CARVE-P2-035); one that does not is paragraph text.
+            (_Scan(r'(\{%)' + _WHOLE, r'([\s\S]*?)(%\})', r'%\}', reach='block', column=True),
+             bygroups(Comment.Preproc, Comment, Comment.Preproc)),
 
             # An inline footnote carries content; a reference carries a label.
             # Each opens only where a `]` lies ahead in its paragraph: an unclosed
@@ -2024,6 +2168,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (_LINK,
              bygroups(using(this, state='linklabel'), Punctuation, Name.Tag, Punctuation)),
             (_LINK_REF, bygroups(Name.Entity, Name.Label)),
+            (_CROSS_LINE_REF, Text),
             (_LINK_ATTRS, using(this, state='linklabel')),
 
             # A cross-reference to a heading id.
@@ -2084,16 +2229,16 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
                    least=1, masked='bare', reach='block'),
              bygroups(Punctuation, using(this, state='strong'), Punctuation)),
             (_Scan(r'(?<![\w*])(\*)(?!\*)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(\*)(?![^\W_])' + _WHOLE,
-                   r'(?<=\S)\*(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
+                   r'(?<=\S)\*(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block', own='*'),
              bygroups(Punctuation, using(this, state='strong'), Punctuation)),
             (_Scan(r'(?<![\w/])(/)(?!/)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(/)(?![^\W_])' + _WHOLE,
-                   r'(?<=\S)/(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
+                   r'(?<=\S)/(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block', own='/'),
              bygroups(Punctuation, using(this, state='emph'), Punctuation)),
             (_Scan(r'(?<![\w/])(_)(?!_)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(_)(?![^\W_])' + _WHOLE,
-                   r'(?<=\S)_(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
+                   r'(?<=\S)_(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block', own='_'),
              bygroups(Punctuation, using(this, state='underline'), Punctuation)),
             (_Scan(r'(?<![\w~])(~)(?!~)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(~)(?![^\W_])' + _WHOLE,
-                   r'(?<=\S)~(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
+                   r'(?<=\S)~(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block', own='~'),
              bygroups(Punctuation, using(this, state='deleted'), Punctuation)),
             # A bare `=` carrying a comparison or an arrow tail on its left is
             # not a highlight delimiter: PART 9's inline precedence excepts "a
@@ -2105,9 +2250,10 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # unguarded. The engine guards both: `x =y z<= w` renders
             # `x =y z≤ w`, no mark at all. Nothing is guarded on the RIGHT,
             # also from the engine - `=>` is not an arrow any more, so
-            # `a =foo=> b` marks `foo` and `a =>foo= b` marks `>foo`.
-            (_Scan(r'(?<![\w=<>!])(=)(?!=)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(?<![<>!])(=)(?![^\W_])' + _WHOLE,
-                   r'(?<=\S)(?<![<>!])=(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
+            # `a =foo=> b` marks `foo`. An opener never takes `>` next
+            # (CARVE-P3-022): `a =>foo= b` is text.
+            (_Scan(r'(?<![\w=<>!])(=)(?![=>])' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(?<![<>!])(=)(?![^\W_])' + _WHOLE,
+                   r'(?<=\S)(?<![<>!])=(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block', own='='),
              bygroups(Punctuation, using(this, state='inserted'), Punctuation)),
 
             # A mention and a tag, each one token: the sigil is part of the name

@@ -94,10 +94,9 @@ def test_a_non_definition_on_a_marker_line_stays_content(source):
 
 
 @pytest.mark.parametrize('marker', ['- ', '> '])
-def test_an_abbreviation_is_defined_at_document_level_only(marker):
-    """corpus 179 and 180: a marker line does not define an abbreviation."""
-    assert not [v for t, v in run(marker + '*[HTML]: Hyper Text') if t is Name.Entity]
-    # ... while the same definition at document level does.
+def test_an_abbreviation_is_defined_in_every_container(marker):
+    """corpus 179 and 180: a marker line defines an abbreviation too (CARVE-P12-026)."""
+    assert (Name.Entity, 'HTML') in run(marker + '*[HTML]: Hyper Text')
     assert (Name.Entity, 'HTML') in run('*[HTML]: Hyper Text')
 
 
