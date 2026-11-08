@@ -1645,11 +1645,11 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\[\^)([^\]\n]+)(\]:)( )(?![ \t]*$)',
              bygroups(Text, using(this, state='markerrun'), Punctuation, Name.Label,
                       Punctuation, Text), 'defbody'),
-            # No marker run on the abbreviation form: an abbreviation is defined
-            # at document level only, so `- *[HTML]: ...` and `> *[HTML]: ...`
-            # are paragraph text (corpus 179, 180).
-            (r'^(' + _MARGIN + r')(\*\[)([A-Za-z0-9]+)(\]:)( )(?![ \t]*$)',
-             bygroups(Text, Punctuation, Name.Entity, Punctuation, Text), 'defbody'),
+            # An abbreviation is defined in every container, with document
+            # scope (CARVE-P12-026), so `- *[HTML]: ...` defines it too.
+            (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\*\[)([A-Za-z0-9]+)(\]:)( )(?![ \t]*$)',
+             bygroups(Text, using(this, state='markerrun'), Punctuation, Name.Entity,
+                      Punctuation, Text), 'defbody'),
             # A link reference definition only where the line COMPLETES the
             # production: a title and an attribute block each behind exactly one
             # space, then only trailing spaces or tabs, so `[a]: /u zzz` and
