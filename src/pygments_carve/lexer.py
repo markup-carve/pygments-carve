@@ -124,7 +124,7 @@ _ATTRS_UNCHECKED = _ATTRS.replace(r'(?!(?<=[{\s])[.#](?!\w[\w-]*[\s}]))', '')
 _ATTRS_LINE = _ATTRS.replace(r'[^{}\n', r'[^{}')
 
 
-def _label(depth=3):
+def _label(depth=3, inner=r'[^\[\]\\\n]|\\.'):
     """A bracketed label that may itself contain ``depth`` levels of brackets.
 
     A regex cannot match arbitrarily balanced brackets, and a link label in
@@ -132,7 +132,6 @@ def _label(depth=3):
     the common shapes matching instead of stopping at the first inner bracket,
     which is what a naive ``\\[[^\\]]*\\]`` does.
     """
-    inner = r'[^\[\]\\\n]|\\.'
     pattern = r'(?:' + inner + r')*'
     for _ in range(depth):
         pattern = r'(?:' + inner + r'|\[' + pattern + r'\])*'
@@ -392,6 +391,9 @@ def _closers(text, rex, masked=False):
     return hit
 
 
+_NAME_TAIL = re.compile(r'(?<![^\W_])(?<!/)[@#][\w.-]*$')
+
+
 class _Scan:
     """A rule whose closer is looked up in an index instead of scanned for.
 
@@ -412,11 +414,12 @@ class _Scan:
     A closer must start on the opener's line, or with ``reach='paragraph'``
     before the paragraph ends. ``masked`` skips closers inside a tighter
     construct. ``whole=False`` makes the rule a guard: it matches the opener
-    alone, and only when a closer exists.
+    alone, and only when a closer exists. ``own`` is a bare span's delimiter:
+    content holding it between two word characters forms no span (carve#4836).
     """
 
     def __init__(self, opener, rest, close, least=0, stop=False, masked=False,
-                 reach='line', whole=True):
+                 reach='line', whole=True, own=None):
         self.opener = opener
         self.pattern = opener + rest
         self.close = close if isinstance(close, tuple) else (close,)
@@ -425,6 +428,7 @@ class _Scan:
         self.masked = masked
         self.reach = reach
         self.whole = whole
+        self.own = own
         self._compiled = {}
 
     def compile(self, flags):
@@ -446,6 +450,8 @@ class _ScanMatcher:
         self.opener = re.compile(scan.opener, flags)
         self.full = re.compile(scan.pattern, flags)
         self.close = tuple(re.compile(r'(?=(' + c + r'))', flags) for c in scan.close)
+        self.own = scan.own and re.compile(
+            r'(?=((?<=[^\W_])' + re.escape(scan.own) + r'(?=[^\W_])))', flags)
 
     def end(self, text, opened):
         scan = self.scan
@@ -457,8 +463,20 @@ class _ScanMatcher:
             i = bisect.bisect_left(starts, at if scan.stop and n == 0 else floor)
             if i == len(starts) or starts[i] >= limit or starts[i] < floor:
                 return None
+            if self.own is not None and self._holds_own(text, opened.end(), starts[i]):
+                return None
             at = ends[i]
         return at
+
+    def _holds_own(self, text, start, stop):
+        inner = _closers(text, self.own, 'bare')[0]
+        i = bisect.bisect_left(inner, start)
+        while i < len(inner) and inner[i] < stop:
+            # A mention or tag name is not the span's own region: `_@a_b_` forms.
+            if not _NAME_TAIL.search(text, start, inner[i]):
+                return True
+            i += 1
+        return False
 
     def match(self, text, pos=0):
         opened = self.opener.match(text, pos)
@@ -599,6 +617,12 @@ _IMAGE_REF = r'(!' + _LABEL + r')(' + _LABEL + r')'
 _LINK = _Scan(r'(' + _LABEL + r')(\()', r'([^)\n]*)(\))', r'\)', stop=True)
 _LINK_REF = r'(' + _LABEL + r')(' + _LABEL + r')'
 _LINK_ATTRS = r'(' + _LABEL + r')(?=' + _ATTRS + r')'
+#: A reference whose text or label crosses a line stays verbatim, interior and
+#: all (CARVE-P3-004): `[*x*` / `y][]` keeps its asterisks. A line break inside
+#: is one that keeps the paragraph open.
+_LINE_LABEL = _label(inner=r'[^\[\]\\\n]|\\.|\n(?![ \t]*(?:\n|\Z|[#>|]|`{3}|~{3}|[-*+:] |\d+[.)] ))')
+_CROSS_LINE_REF = r'!?(?=' + _LINE_LABEL + _LINE_LABEL + r')(?=[^\]]*\n|' + _LABEL + r'\[[^\]]*\n)' \
+    + _LINE_LABEL + _LINE_LABEL
 _CROSS_REFERENCE = r'(</)(#[\w-]+)(>)'
 _AUTOLINK = _Scan(r'(<)', r'([a-zA-Z][\w+.-]*:[^>\s]+|[^>\s@]+@[^>\s]+)(>)', r'[>\s]',
                   stop=True)
@@ -2045,6 +2069,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (_LINK,
              bygroups(using(this, state='linklabel'), Punctuation, Name.Tag, Punctuation)),
             (_LINK_REF, bygroups(Name.Entity, Name.Label)),
+            (_CROSS_LINE_REF, Text),
             (_LINK_ATTRS, using(this, state='linklabel')),
 
             # A cross-reference to a heading id.
@@ -2105,16 +2130,16 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
                    least=1, masked='bare', reach='block'),
              bygroups(Punctuation, using(this, state='strong'), Punctuation)),
             (_Scan(r'(?<![\w*])(\*)(?!\*)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(\*)(?![^\W_])' + _WHOLE,
-                   r'(?<=\S)\*(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
+                   r'(?<=\S)\*(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block', own='*'),
              bygroups(Punctuation, using(this, state='strong'), Punctuation)),
             (_Scan(r'(?<![\w/])(/)(?!/)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(/)(?![^\W_])' + _WHOLE,
-                   r'(?<=\S)/(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
+                   r'(?<=\S)/(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block', own='/'),
              bygroups(Punctuation, using(this, state='emph'), Punctuation)),
             (_Scan(r'(?<![\w/])(_)(?!_)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(_)(?![^\W_])' + _WHOLE,
-                   r'(?<=\S)_(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
+                   r'(?<=\S)_(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block', own='_'),
              bygroups(Punctuation, using(this, state='underline'), Punctuation)),
             (_Scan(r'(?<![\w~])(~)(?!~)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(~)(?![^\W_])' + _WHOLE,
-                   r'(?<=\S)~(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
+                   r'(?<=\S)~(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block', own='~'),
              bygroups(Punctuation, using(this, state='deleted'), Punctuation)),
             # A bare `=` carrying a comparison or an arrow tail on its left is
             # not a highlight delimiter: PART 9's inline precedence excepts "a
@@ -2126,9 +2151,10 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # unguarded. The engine guards both: `x =y z<= w` renders
             # `x =y z≤ w`, no mark at all. Nothing is guarded on the RIGHT,
             # also from the engine - `=>` is not an arrow any more, so
-            # `a =foo=> b` marks `foo` and `a =>foo= b` marks `>foo`.
-            (_Scan(r'(?<![\w=<>!])(=)(?!=)' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(?<![<>!])(=)(?![^\W_])' + _WHOLE,
-                   r'(?<=\S)(?<![<>!])=(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block'),
+            # `a =foo=> b` marks `foo`. An opener never takes `>` next
+            # (CARVE-P3-022): `a =>foo= b` is text.
+            (_Scan(r'(?<![\w=<>!])(=)(?![=>])' + _WHOLE, r'(\S(?:[\s\S]*?\S)?)(?<![<>!])(=)(?![^\W_])' + _WHOLE,
+                   r'(?<=\S)(?<![<>!])=(?![^\W_])' + _WHOLE, least=1, masked='bare', reach='block', own='='),
              bygroups(Punctuation, using(this, state='inserted'), Punctuation)),
 
             # A mention and a tag, each one token: the sigil is part of the name

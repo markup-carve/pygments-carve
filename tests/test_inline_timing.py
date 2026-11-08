@@ -193,7 +193,7 @@ _OLD = [
     ('a bare closer scanned for, not looked up',
      r"""(r'(?<![\w*])(\*)(?!\*)(\S(?:[^\n]*?\S)?)(\*)(?![^\W_])',""",
      """(_Scan(r'(?<![\\w*])(\\*)(?!\\*)' + _WHOLE, r'(\\S(?:[\\s\\S]*?\\S)?)(\\*)(?![^\\W_])' + _WHOLE,
-                   r'(?<=\\S)\\*(?![^\\W_])' + _WHOLE, least=1, masked='bare', reach='block'),""",
+                   r'(?<=\\S)\\*(?![^\\W_])' + _WHOLE, least=1, masked='bare', reach='block', own='*'),""",
      '*a '),
     ('the CriticMarkup substitution, scanned twice',
      r"""(r'(\{~)([^\n]*?)(~>)([^\n]*?)(~\})',""",
