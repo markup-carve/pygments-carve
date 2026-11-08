@@ -177,6 +177,8 @@ _RECOVERED_INFO = (
 #: A column-0 opener right under a marker line ending in `+` (`- +`, `[^n]: +`).
 #: Group 2 takes part, empty, and the body runs to a closer within the bound
 #: or, unclosed, to its first blank (carve#5304). A `+` alone on its line, or after prose, has no such end.
+#: One-line attribute lines may sit between, and the host is one marker at
+#: column 0: a nested or indented one leaves the fence outside (`_AttachedFence`).
 _ATTACHED = r'(?<=[-*.:>)][ \t]\+\n)|(?<=[-*.:>)][ \t]\+[ \t]\n)'
 
 #: True where group 2 is a real margin: `(?!\2)` fails on an empty one, and an
@@ -635,11 +637,14 @@ class _ContainerFenceScan(_ScanMatcher):
 
 
 class _MarkerCommentFence(_Scan):
-    """A `%%%` comment fence on a list item's or a description's marker line.
+    """A `%%%` comment fence on a list item's, a description's or a footnote's
+    marker line.
 
     Its body is every following line that is blank or reaches the content
     column. The first line holding an exact-width closer closes it, at any
     column (corpus 864); a line further left ends it unclosed (carve#4907).
+    The content column is where `%%%` starts, or for a footnote two past the
+    `[^` of a footnote marker (group 4), however wide the gap after `]:` is.
     """
 
     def matcher(self, flags):
@@ -649,25 +654,38 @@ class _MarkerCommentFence(_Scan):
 class _MarkerCommentFenceScan(_ScanMatcher):
 
     def end(self, text, opened):
-        column = opened.start(5) - opened.start(2)
+        if opened.group(4).startswith('[^'):
+            column = opened.start(4) - opened.start(2) + 2
+        else:
+            column = opened.start(5) - opened.start(2)
         closer = re.compile(r'[ \t>]*%%{%d}(?!%%)' % len(opened.group(5)))
+        depth = opened.group(3).count('>')
         at = opened.end()
         while at < len(text):
             stop = text.find('\n', at)
             stop = len(text) if stop == -1 else stop
+            prefix = text[at:stop][:len(text[at:stop]) - len(text[at:stop].lstrip(' \t>'))]
+            if prefix.count('>') < depth:
+                return at  # the line leaves the quote, blank or not
             if closer.match(text, at, stop):
                 return stop
-            content = len(text[at:stop]) - len(text[at:stop].lstrip(' \t>'))
+            content = len(prefix)
             if at + content < stop and content < column:
                 return at
             at = stop + 1
         return len(text)
 
 
+_COMMENT_FENCE_REST = r'([\s\S]*?)(?:([ \t]*)(%%%+)([^\n]*))?'
+
 _MARKER_COMMENT_FENCE = _MarkerCommentFence(
-    r'^((?:\A\ufeff)?)([ \t]*)((?:>[ \t]?)*(?:(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')?) +'
-    r'(?:(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')? +)*)()(%%%+)([^\n]*)(\n|\Z)',
-    r'([\s\S]*?)(?:([ \t]*)(%%%+)([^\n]*))?', ())
+    r'^((?:\A\ufeff)?)([ \t]*)((?:>[ \t]?)*(?:(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')? +)+'
+    r'|(?:>[ \t]?)*(?=\[\^))((?:\[\^[^\]\n]+\]: +)?)(%%%+)([^\n]*)(\n|\Z)',
+    _COMMENT_FENCE_REST, ())
+
+_DESCRIPTION_COMMENT_FENCE = _MarkerCommentFence(
+    r'^((?:\A\ufeff)?)([ \t]*)(:)( +)(%%%+)([^\n]*)(\n|\Z)',
+    _COMMENT_FENCE_REST, ())
 
 
 #: A fence info string a container fence may carry: a raw format, or a
@@ -713,6 +731,61 @@ _CROSS_REFERENCE = r'(</)(#[\w-]+)(>)'
 _AUTOLINK = _Scan(r'(<)', r'([a-zA-Z][\w+.-]*:[^>\s]+|[^>\s@]+@[^>\s]+)(>)', r'[>\s]',
                   stop=True)
 
+_ATTRS_ONLY_LINE = re.compile(r'[ \t]*' + _ATTRS + r'[ \t]*$')
+_PLUS_LINE = re.compile(
+    r'(?:(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')?|>|:|\[\^[^\]\n]+\]:)[ \t]+\+[ \t]*$')
+
+
+def _attached(text, at):
+    """Whether the line at ``at`` sits under a `+` marker line, directly or
+    with only one-line attribute lines between (PART 9 §17 L3).
+    Each sits flush left or at the host's content column: a footnote's is two
+    past its `[^`, a quote's is never reached by an unmarked line."""
+    end, indents = at - 1, []
+    while end >= 0 and text[end] == '\n':
+        start = text.rfind('\n', 0, end) + 1
+        if not _ATTRS_ONLY_LINE.match(text, start, end):
+            if not _PLUS_LINE.match(text, start, end):
+                return False
+            line = text[start:end]
+            note = line.find('[^')
+            column = note + 2 if note >= 0 else line.rindex('+')
+            if '>' in line[:column]:
+                column = len(line) + 1
+            return all(i == 0 or i >= column for i in indents)
+        indents.append(len(text[start:end]) - len(text[start:end].lstrip(' \t')))
+        end = start - 1
+    return False
+
+
+class _AttachedFence(_Scan):
+    """A column-0 fence rule whose `_ATTACHED` slot is decided by `_attached`:
+    no fixed-width lookbehind can skip attribute lines or read the whole
+    marker line."""
+
+    def __init__(self, pattern):
+        super().__init__(pattern, '', ())
+
+    def matcher(self, flags):
+        return _AttachedFenceMatcher(self.pattern, flags)
+
+
+class _AttachedFenceMatcher:
+
+    def __init__(self, pattern, flags):
+        self.pattern = pattern
+        self.full = re.compile(pattern.replace(_ATTACHED, '(?!)'), flags).match
+        self.forced = re.compile(pattern.replace(_ATTACHED, ''), flags).match
+
+    def match(self, text, pos=0):
+        if text.startswith(('`', '~'), pos) and pos and text[pos - 1] == '\n' \
+                and _attached(text, pos):
+            return self.forced(text, pos)
+        return self.full(text, pos)
+
+
+#: A fallback opener line is paragraph text, its run a code span (carve#4807).
+_FALLBACK_LINE = re.compile(_FALLBACK.replace('(?:`{3,}|~{3,})', '(?:`{3,}(?!`)|~{3,}(?!~))', 1), re.M)
 _MASK_AT = re.compile(r'\\|`|<|!?\[')
 _ESCAPE = re.compile(r'\\[!-/:-@\[-`{-~]')
 _TIGHT_LABELS = None
@@ -741,13 +814,16 @@ def _tight(text, at, unclosed):
     if char == '`':
         if at and text[at - 1] == '`':
             return None
-        if text.startswith('```', at) and not text[text.rfind('\n', 0, at) + 1:at].strip():
-            # A fence line, which the block rules read; it is not a code span.
-            return None
         end = at
         while end < len(text) and text[end] == '`':
             end += 1
         close = _code_close(text, end, end - at, 'paragraph')
+        line = text.rfind('\n', 0, at) + 1
+        if text.startswith('```', at) and not text[line:at].strip() and not (
+                close is not None and _FALLBACK_LINE.match(text, line)):
+            # A fence line, which the block rules read; it is not a code span.
+            # A fallback line is paragraph text, and its closed run a code span.
+            return None
         if close is None:
             return (at, _block_end(text, end)) if unclosed else None
         return at, close
@@ -1390,6 +1466,17 @@ def _description_marker(lexer, match):
             yield match.start(4) + at, token, value
 
 
+_FOOTNOTE_MARKER = re.compile(r'(\[\^)([^\]\n]+)(\]:)( +)')
+
+
+def _footnote_marker(lexer, match, ctx=None):
+    """The `[^n]: ` of a footnote's marker-line comment fence, when it has one."""
+    found = _FOOTNOTE_MARKER.fullmatch(match.group())
+    if found:
+        for n, token in enumerate((Punctuation, Name.Label, Punctuation, Text), 1):
+            yield match.start() + found.start(n), token, found.group(n)
+
+
 _FLUSH_BLOCK = re.compile(
     r'(?![-*](?:' + _ATTRS + r')?[ \t]|(?:' + _ORDERED + r'|\.)(?:' + _ATTRS + r')?[ \t])[^ \t\n]')
 
@@ -1650,15 +1737,15 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # verbatim. It is emitted as one token including the `=`, because
             # the format word without its sigil is not the construct. It takes
             # no title and no label, so its guard is the format word alone.
-            (r'^((?:\A\ufeff)?)(?:([ \t]+|' + _ATTACHED + r')|)((`|~)\4{2,})'
+            (_AttachedFence(r'^((?:\A\ufeff)?)(?:([ \t]+|' + _ATTACHED + r')|)((`|~)\4{2,})'
              r'(?= ?=[a-zA-Z][\w+.-]*[ \t]*$)'
-             r'([ \t]*)(=[a-zA-Z][\w+.-]*)([^\n]*)(\n)' + _FENCE_TAIL,
+             r'([ \t]*)(=[a-zA-Z][\w+.-]*)([^\n]*)(\n)' + _FENCE_TAIL),
              _fenced(6, Text, Text, Punctuation, None, Text, Keyword.Type,
                      using(this, state='infostring'), Text,
                      _BODY, Text, Punctuation, Text)),
-            (r'^((?:\A\ufeff)?)(?:([ \t]+|' + _ATTACHED + r')|)((`|~)\4{2,})'
+            (_AttachedFence(r'^((?:\A\ufeff)?)(?:([ \t]+|' + _ATTACHED + r')|)((`|~)\4{2,})'
              r'(?= ?(?:' + _FENCE_INFO + r')?[ \t]*$|' + _RECOVERED_INFO + r')'
-             r'([ \t]*)([A-Za-z0-9_+#./-]+)?([^\n]*)(\n)' + _FENCE_TAIL,
+             r'([ \t]*)([A-Za-z0-9_+#./-]+)?([^\n]*)(\n)' + _FENCE_TAIL),
              _fenced(6, Text, Text, Punctuation, None, Text, Name.Builtin,
                      using(this, state='infostring'), Text,
                      _BODY, Text, Punctuation, Text)),
@@ -1734,7 +1821,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # because `inline` has no pop rule - `block` includes it, so a pop
             # there would pop the root state - and an unpopped body swallows
             # every block construct in the rest of the document.
-            (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\[\^)([^\]\n]+)(\]:)( )(?![ \t]*$)',
+            (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\[\^)([^\]\n]+)(\]:)( )(?![ \t]*$)(?! *%%%)',
              bygroups(Text, using(this, state='markerrun'), Punctuation, Name.Label,
                       Punctuation, Text), 'defbody'),
             # An abbreviation is defined in every container, with document
@@ -1747,7 +1834,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # space, then only trailing spaces or tabs, so `[a]: /u zzz` and
             # `[a]: /u  "T"` are paragraphs (CARVE-P3-005). A label may not
             # start with `@` (CARVE-P3-003).
-            (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\[)(?!@)([^\]\n]+)(\]:)'
+            (r'^(' + _MARGIN + r')(' + _MARKER_RUN + r')(\[)(?!@)(?!\^[^\]\n]+\]: +%%%)([^\]\n]+)(\]:)'
              r'( [' + _LINE_SPACE + r']*)([^' + _WHITE_SPACE + r']+)'
              r'(?:( )(?:("(?:\\"|[^"\n])*")|(\'(?:\\\'|[^\'\n])*\')))?'
              r'(?:( )(' + _ATTRS_UNCHECKED + r'))?([ \t]*)$',
@@ -1760,7 +1847,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # stays a paragraph.
             # A comment fence on a marker line hides its body too (corpus 337).
             (_MARKER_COMMENT_FENCE,
-             bygroups(Text, Text, using(this, state='markerrun'), Text, Comment.Preproc,
+             bygroups(Text, Text, using(this, state='markerrun'), _footnote_marker, Comment.Preproc,
                       Comment, Text, Comment, Text, Comment.Preproc, Comment)),
             (r'^(' + _MARGIN + r')(::)( +[ \t]*)(?=[^ \t\n])',
              bygroups(Text, Punctuation, Text), ('deflist', 'termtail', 'heading')),
@@ -1849,7 +1936,10 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
              _fenced(8, Text, Text, Punctuation, Text, Punctuation, None, Text,
                      using(this, state='fencelang'), using(this, state='infostring'),
                      Text, _BODY, Text, Punctuation, Text)),
-            (r'^(' + _MARGIN + r')(:)(?= +[ \t]*[^ \t\n])' + _NESTED_TAIL, _description_marker),
+            (r'^(' + _MARGIN + r')(:)(?= +[ \t]*[^ \t\n])(?! +%%%)' + _NESTED_TAIL, _description_marker),
+            (_DESCRIPTION_COMMENT_FENCE,
+             bygroups(Text, Text, Punctuation, Text, Comment.Preproc,
+                      Comment, Text, Comment, Text, Comment.Preproc, Comment)),
             include('block'),
         ],
 
