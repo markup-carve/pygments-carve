@@ -66,6 +66,14 @@ def test_a_quoted_marker_line_comment_fence_ends_where_the_quote_does(source, sh
     ('> +\n  {.x}\n```\nx\n\n*b*\n', 'x\n\n*b*\n', []),
     ('para +\n{.x}\n```\nx\n\n*b*\n', 'x\n\n*b*\n', []),
     ('- +\n\n{.x}\n```\nx\n\n*b*\n', 'x\n\n*b*\n', []),
+    # Only one marker at column 0 hosts the fence; prose ending in `: +`,
+    # a nested or an indented marker does not.
+    ('hello: +\n{.x}\n```\nx\n\n*b*\n', 'x\n\n*b*\n', []),
+    ('hello: +\n```\nx\n\n*b*\n', 'x\n\n*b*\n', []),
+    ('- - +\n```\nx\n\n*b*\n', 'x\n\n*b*\n', []),
+    ('  - +\n```\nx\n\n*b*\n', 'x\n\n*b*\n', []),
+    ('-   +\n```\nx\n\n*b*\n', 'x\n', ['b']),
+    ('1) +\n```\nx\n\n*b*\n', 'x\n', ['b']),
 ])
 def test_an_attribute_line_between_the_plus_and_its_fence(source, body, shown):
     assert text_of(source, (String.Backtick,)) == body

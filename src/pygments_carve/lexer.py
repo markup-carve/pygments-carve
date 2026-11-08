@@ -177,9 +177,9 @@ _RECOVERED_INFO = (
 #: A column-0 opener right under a marker line ending in `+` (`- +`, `[^n]: +`).
 #: Group 2 takes part, empty, and the body runs to a closer within the bound
 #: or, unclosed, to its first blank (carve#5304). A `+` alone on its line, or after prose, has no such end.
-#: One-line attribute lines may sit between (`_AttachedFence`).
+#: One-line attribute lines may sit between, and the host is one marker at
+#: column 0: a nested or indented one leaves the fence outside (`_AttachedFence`).
 _ATTACHED = r'(?<=[-*.:>)][ \t]\+\n)|(?<=[-*.:>)][ \t]\+[ \t]\n)'
-_PLUS_LINE = re.compile(r'[^\n]*[-*.:>)][ \t]\+[ \t]?$')
 
 #: True where group 2 is a real margin: `(?!\2)` fails on an empty one, and an
 #: empty `\2` is never preceded by a blank character at a line start.
@@ -732,18 +732,20 @@ _AUTOLINK = _Scan(r'(<)', r'([a-zA-Z][\w+.-]*:[^>\s]+|[^>\s@]+@[^>\s]+)(>)', r'[
                   stop=True)
 
 _ATTRS_ONLY_LINE = re.compile(r'[ \t]*' + _ATTRS + r'[ \t]*$')
+_PLUS_LINE = re.compile(
+    r'(?:(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')?|>|:|\[\^[^\]\n]+\]:)[ \t]+\+[ \t]*$')
 
 
-def _attached_past_attributes(text, at):
-    """Whether the line at ``at`` sits under a `+` marker line with only
-    one-line attribute lines between, at least one of them (PART 9 §17 L3).
+def _attached(text, at):
+    """Whether the line at ``at`` sits under a `+` marker line, directly or
+    with only one-line attribute lines between (PART 9 §17 L3).
     Each sits flush left or at the host's content column: a footnote's is two
     past its `[^`, a quote's is never reached by an unmarked line."""
     end, indents = at - 1, []
     while end >= 0 and text[end] == '\n':
         start = text.rfind('\n', 0, end) + 1
         if not _ATTRS_ONLY_LINE.match(text, start, end):
-            if not indents or not _PLUS_LINE.match(text, start, end):
+            if not _PLUS_LINE.match(text, start, end):
                 return False
             line = text[start:end]
             note = line.find('[^')
@@ -757,8 +759,9 @@ def _attached_past_attributes(text, at):
 
 
 class _AttachedFence(_Scan):
-    """A column-0 fence rule whose `_ATTACHED` lookbehind also sees a `+`
-    above attribute lines, which no fixed-width lookbehind can."""
+    """A column-0 fence rule whose `_ATTACHED` slot is decided by `_attached`:
+    no fixed-width lookbehind can skip attribute lines or read the whole
+    marker line."""
 
     def __init__(self, pattern):
         super().__init__(pattern, '', ())
@@ -771,12 +774,12 @@ class _AttachedFenceMatcher:
 
     def __init__(self, pattern, flags):
         self.pattern = pattern
-        self.full = re.compile(pattern, flags).match
+        self.full = re.compile(pattern.replace(_ATTACHED, '(?!)'), flags).match
         self.forced = re.compile(pattern.replace(_ATTACHED, ''), flags).match
 
     def match(self, text, pos=0):
         if text.startswith(('`', '~'), pos) and pos and text[pos - 1] == '\n' \
-                and _attached_past_attributes(text, pos):
+                and _attached(text, pos):
             return self.forced(text, pos)
         return self.full(text, pos)
 
