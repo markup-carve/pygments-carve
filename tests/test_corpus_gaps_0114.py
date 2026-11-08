@@ -48,6 +48,11 @@ def test_an_opener_the_lexer_cannot_end_claims_nothing(source):
     assert marked(source) == ['b']
 
 
+def test_an_attached_fence_with_a_closer_keeps_its_blank_lines():
+    assert text_of('- +\n```\na\n\nb\n```\n*after*\n', String.Backtick) == 'a\n\nb\n'
+    assert marked('- +\n```\na\n\nb\n```\n*after*\n') == ['after']
+
+
 def test_a_plus_after_prose_attaches_nothing():
     assert text_of('foo +\n```\ncode\n\n*after*\n', String.Backtick) == 'code\n\n*after*\n'
     assert marked('[^n]: +\n```\ncode\n\n*after*\n') == ['after']
@@ -121,7 +126,7 @@ def test_an_equals_before_a_greater_than_never_opens():
 
 # CARVE-P3-004
 @pytest.mark.parametrize('source', [
-    '[*x*\ny][]\n', '[*t*][a\nb]\n', '![*x*][a\nb]\n', '![x\ny][]\n',
+    '[*x*\ny][]\n', '[*t*][a\nb]\n', '![*x*][a\nb]\n', '![x\ny][]\n', '[[x]\n*y*][r]\n',
 ])
 def test_a_reference_across_a_line_stays_verbatim(source):
     assert marked(source) == []

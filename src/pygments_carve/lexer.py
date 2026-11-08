@@ -175,8 +175,8 @@ _RECOVERED_INFO = (
 )
 
 #: A column-0 opener right under a marker line ending in `+` (`- +`, `[^n]: +`).
-#: Group 2 takes part, empty, and the body ends at its closer or its first
-#: blank (carve#5304). A `+` alone on its line, or after prose, has no such end.
+#: Group 2 takes part, empty, and the body runs to a closer within the bound
+#: or, unclosed, to its first blank (carve#5304). A `+` alone on its line, or after prose, has no such end.
 _ATTACHED = r'(?<=[-*.:>)][ \t]\+\n)|(?<=[-*.:>)][ \t]\+[ \t]\n)'
 
 #: True where group 2 is a real margin: `(?!\2)` fails on an empty one, and an
@@ -197,7 +197,8 @@ _FALLBACK = (
 #: it still pairs within `_FENCE_BODY_LINES` or opens nothing.
 _FENCE_TAIL = (
     r'((?(2)(?:' + _INDENTED + r'(?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?'
-    r'|(?!' + _INDENTED + r')(?:(?!\3\4*[ \t]*$)(?![ \t]*(?:\n|\Z))[^\n]*(?:\n|\Z))*)'
+    r'|(?!' + _INDENTED + r')(?:(?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?(?=\3\4*[ \t]*$)'
+    r'|(?:(?!\3\4*[ \t]*$)(?![ \t]*(?:\n|\Z))[^\n]*(?:\n|\Z))*))'
     r'|(?:(?!\3\4*[ \t]*$)[^\n]*(?:\n|\Z))*))'
     r'((?(2)\2))((?(2)(?:' + _INDENTED + r'\3\4*|(?!' + _INDENTED + r')(?:\3\4*)?)'
     r'|(?:\3\4*)?))([ \t]*)$'
@@ -707,8 +708,7 @@ _LINK_ATTRS = r'(' + _LABEL + r')(?=' + _ATTRS + r')'
 #: all (CARVE-P3-004): `[*x*` / `y][]` keeps its asterisks. A line break inside
 #: is one that keeps the paragraph open.
 _LINE_LABEL = _label(inner=r'[^\[\]\\\n]|\\.|\n(?![ \t]*(?:\n|\Z|[#>|]|`{3}|~{3}|[-*+:] |\d+[.)] ))')
-_CROSS_LINE_REF = r'!?(?=' + _LINE_LABEL + _LINE_LABEL + r')(?=[^\]]*\n|' + _LABEL + r'\[[^\]]*\n)' \
-    + _LINE_LABEL + _LINE_LABEL
+_CROSS_LINE_REF = r'!?(?!' + _LABEL + _LABEL + r')' + _LINE_LABEL + _LINE_LABEL
 _CROSS_REFERENCE = r'(</)(#[\w-]+)(>)'
 _AUTOLINK = _Scan(r'(<)', r'([a-zA-Z][\w+.-]*:[^>\s]+|[^>\s@]+@[^>\s]+)(>)', r'[>\s]',
                   stop=True)
