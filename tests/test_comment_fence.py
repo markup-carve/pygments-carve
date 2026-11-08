@@ -255,7 +255,8 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     unchanged. The marker-line comment fence (corpus 337, 864) and the column
     rule for a braced comment run in block position (CARVE-P2-035) then take
     25 of them, because the current rules read those documents and the
-    regression rule no longer reaches them: 44.
+    regression rule no longer reaches them: 44. The same fence on a footnote's
+    or a description's marker line (pygments-carve#134) takes ten more: 34.
     """
     hits = []
     for path in DOCUMENTS:
@@ -308,22 +309,6 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
         'out-it-6.crv',
         '939-a-line-after-a-comment-block-in-a-line-block-reads-the-stanza-with'
         'out-it.crv',
-        '940-a-comment-span-on-a-description-or-note-marker-line-closes-below-i'
-        'ts-column-2.crv',
-        '940-a-comment-span-on-a-description-or-note-marker-line-closes-below-i'
-        'ts-column-4.crv',
-        '940-a-comment-span-on-a-description-or-note-marker-line-closes-below-i'
-        'ts-column-5.crv',
-        '940-a-comment-span-on-a-description-or-note-marker-line-closes-below-i'
-        'ts-column-7.crv',
-        '940-a-comment-span-on-a-description-or-note-marker-line-closes-below-i'
-        'ts-column-8.crv',
-        '940-a-comment-span-on-a-description-or-note-marker-line-closes-below-i'
-        'ts-column.crv',
-        '942-a-descendant-comment-span-closes-between-its-own-column-and-its-it'
-        'em-s-4.crv',
-        '942-a-descendant-comment-span-closes-between-its-own-column-and-its-it'
-        'em-s.crv',
         '943-a-comment-line-below-a-nested-line-block-s-column-stays-in-its-spa'
         'n-3.crv',
         '943-a-comment-line-below-a-nested-line-block-s-column-stays-in-its-spa'
@@ -334,10 +319,8 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
         'n-7.crv',
         '943-a-comment-line-below-a-nested-line-block-s-column-stays-in-its-spa'
         'n.crv',
-        '943-an-empty-comment-span-is-written-as-adjacent-delimiters.crv',
         '946-a-span-s-closer-after-a-blank-keeps-the-list-tight-2.crv',
         '946-a-span-s-closer-after-a-blank-keeps-the-list-tight-3.crv',
-        '946-a-span-s-closer-after-a-blank-keeps-the-list-tight-4.crv',
         '973-open-state-lifetime-boundaries-15.crv',
     ]), hits
 

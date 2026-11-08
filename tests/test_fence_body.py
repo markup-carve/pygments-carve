@@ -320,11 +320,13 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     The spec 0.1.14 pin (carve 336b0e15) raises it to 215 with the reader
     unchanged. The reader then follows carve#4018 and #4807 - a column-0
     opener with no closer runs to the end, and a language token followed by
-    invalid metadata still opens - and pairs 78 more bodies: 293.
+    invalid metadata still opens - and pairs 78 more bodies: 293. It sees an
+    attribute line between a `+` and its fence (pygments-carve#135), so
+    `782-*-13` holds no body that runs to the end: 292.
     """
     hits = [p.name for p in DOCUMENTS
             if _non_verbatim(REGRESSION, p.read_text(encoding='utf-8'))]
-    assert len(hits) == 293, len(hits)
+    assert len(hits) == 292, len(hits)
 
 
 # ----------------------------------------------------------------------------
@@ -409,9 +411,9 @@ def test_a_paired_body_is_one_the_engine_renders():
     unchanged: `11-fenced-code-16`, seven `531-*` and three `633-*` leave, and
     ten documents join. Three more join with carve#4018: `678-*` and
     `851-*-2` hold an indented opener the lexer does not pair, so the reader
-    sees the column-0 closer below it open an empty fence, and in `782-*-13`
-    an attribute line sits between the `+` and the fence it attaches, so the
-    first-blank end of carve#5304 is not seen and the body runs on.
+    sees the column-0 closer below it open an empty fence. `782-*-13` left
+    with pygments-carve#135: the reader and the lexer now see an attribute
+    line between the `+` and the fence it attaches.
     """
     unconfirmed = sorted({path.stem for path, source, html in _documents_with_html()
                           for body in fencebodies.bodies(source)
@@ -445,7 +447,6 @@ def test_a_paired_body_is_one_the_engine_renders():
         '650-a-wrapped-attribute-line-interrupts-like-a-one-line-attribute-line-3',
         '678-a-below-column-fence-stays-in-a-definition-paragraph',
         '782-a-first-block-plus-hands-its-block-to-the-host-as-the-host-reads-it-11',
-        '782-a-first-block-plus-hands-its-block-to-the-host-as-the-host-reads-it-13',
         '851-a-first-block-plus-shape-reads-the-one-attach-rule-2',
         '873-a-delimited-body-s-overlapping-header-and-footer-make-no-header-cells',
         '923-a-line-block-stanza-remains-open-after-a-paired-payload-run',
