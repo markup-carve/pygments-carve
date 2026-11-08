@@ -48,6 +48,11 @@ def test_an_opener_the_lexer_cannot_end_claims_nothing(source):
     assert marked(source) == ['b']
 
 
+def test_a_plus_after_prose_attaches_nothing():
+    assert text_of('foo +\n```\ncode\n\n*after*\n', String.Backtick) == 'code\n\n*after*\n'
+    assert marked('[^n]: +\n```\ncode\n\n*after*\n') == ['after']
+
+
 # carve#4807: the language survives invalid metadata.
 @pytest.mark.parametrize('source', [
     '```js title="x"\ncode\n```\n', '```js {1,3}\ncode\n```\n',

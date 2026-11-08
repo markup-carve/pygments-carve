@@ -137,7 +137,7 @@ def bodies(source):
                 index = j + 1
                 break
         else:
-            attached = index > 0 and re.search(r'[ \t]\+[ \t]?$', lines[index - 1])
+            attached = index > 0 and re.search(r'[-*.:>)][ \t]\+[ \t]?$', lines[index - 1])
             if not indent and not attached and index + 1 < len(lines):
                 found.append(Body(offsets[index + 1], len(source), run, index + 1,
                                   raw=raw and raw.group(1)))

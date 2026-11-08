@@ -176,8 +176,8 @@ _RECOVERED_INFO = (
 
 #: A column-0 opener right under a marker line ending in `+` (`- +`, `[^n]: +`).
 #: Group 2 takes part, empty, and the body ends at its closer or its first
-#: blank (carve#5304). A `+` alone on its line attaches without that end.
-_ATTACHED = r'(?<=[ \t]\+\n)|(?<=[ \t]\+[ \t]\n)'
+#: blank (carve#5304). A `+` alone on its line, or after prose, has no such end.
+_ATTACHED = r'(?<=[-*.:>)][ \t]\+\n)|(?<=[-*.:>)][ \t]\+[ \t]\n)'
 
 #: True where group 2 is a real margin: `(?!\2)` fails on an empty one, and an
 #: empty `\2` is never preceded by a blank character at a line start.
