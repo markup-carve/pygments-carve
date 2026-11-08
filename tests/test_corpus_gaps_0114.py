@@ -62,11 +62,16 @@ def test_invalid_metadata_keeps_the_language(source):
     '```js, x\n*code*\n```\n', '``` {.x}\n*code*\n```\n', '```  js\n*code*\n```\n',
 ])
 def test_the_fallback_opens_nothing(source):
-    assert marked(source) == ['code']
+    """The line is paragraph text; its run opens an inline code span that ends
+    where the paragraph does, at the column-0 fence below it."""
+    assert marked(source) == []
+    spans = [v for t, v in tokens(source) if t is String.Backtick]
+    assert spans and spans[0].endswith('*code*'), spans
 
 
 def test_a_run_as_long_as_the_opener_refuses_the_recovery():
-    assert text_of('```js foo``` z\ncode\n```\n', String.Backtick) == ''
+    # `js foo` is an inline code span; the closing run opens an empty fence.
+    assert text_of('```js foo``` z\ncode\n```\n', String.Backtick) == 'js foo'
 
 
 # carve#4836, PART 9 9 R2: a bare span holding its own delimiter between word

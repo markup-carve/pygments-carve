@@ -171,13 +171,24 @@ _FENCE_BODY_LINES = 512
 #: that language, unless the rest of the line holds a run as long as the opener
 #: (```` ```js foo``` ```` stays an inline code span). `\3` is the opener run.
 _RECOVERED_INFO = (
-    r' ?[A-Za-z0-9_+#./-]+(?=[^\S\n]|[﻿"“”{\[])(?![^\n]*\3)[^\n]*$'
+    r' ?[A-Za-z0-9_+#./-]+(?=[^\S\n]|[\ufeff"\u201c\u201d{\[])(?![^\n]*\3)[^\n]*$'
 )
 
-#: A column-0 opener right under a line ending in `+`. Attached by that `+`, it
-#: ends at its first blank (carve#5304), which this lexer does not model, so it
-#: keeps the indented reading: pair, or open nothing.
-_ATTACHED = r'(?<=\+\n)|(?<=\+ \n)|(?<=\+\t\n)'
+#: A column-0 opener right under a marker line ending in `+` (`- +`, `[^n]: +`).
+#: Group 2 takes part, empty, and the body ends at its closer or its first
+#: blank (carve#5304). A `+` alone on its line attaches without that end.
+_ATTACHED = r'(?<=[ \t]\+\n)|(?<=[ \t]\+[ \t]\n)'
+
+#: True where group 2 is a real margin: `(?!\2)` fails on an empty one, and an
+#: empty `\2` is never preceded by a blank character at a line start.
+_INDENTED = r'(?=(?!\2)|\2(?<=[ \t]))'
+
+#: A column-0 opener line whose info string neither conforms nor recovers. It
+#: is paragraph text, and its run opens an inline code span.
+_FALLBACK = (
+    r'(?:\A\ufeff)?(?:`{3,}|~{3,})(?! ?(?:' + _FENCE_INFO + r')?[ \t]*$)'
+    r'(?! ?[A-Za-z0-9_+#./-]+(?=[^\S\n]|[\ufeff"\u201c\u201d{\[])(?![^\n]*(?:```|~~~))[^\n]*$)'
+)
 
 #: The body and closer of a fence pair. At column 0 (group 2 did not take part)
 #: the closer is optional and the body runs to it or to the end of the document
@@ -185,9 +196,11 @@ _ATTACHED = r'(?<=\+\n)|(?<=\+ \n)|(?<=\+\t\n)'
 #: twice. An indented opener sits in a container the lexer does not track, so
 #: it still pairs within `_FENCE_BODY_LINES` or opens nothing.
 _FENCE_TAIL = (
-    r'((?(2)(?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?'
+    r'((?(2)(?:' + _INDENTED + r'(?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?'
+    r'|(?!' + _INDENTED + r')(?:(?!\3\4*[ \t]*$)(?![ \t]*(?:\n|\Z))[^\n]*(?:\n|\Z))*)'
     r'|(?:(?!\3\4*[ \t]*$)[^\n]*(?:\n|\Z))*))'
-    r'((?(2)\2))((?(2)\3\4*|(?:\3\4*)?))([ \t]*)$'
+    r'((?(2)\2))((?(2)(?:' + _INDENTED + r'\3\4*|(?!' + _INDENTED + r')(?:\3\4*)?)'
+    r'|(?:\3\4*)?))([ \t]*)$'
 )
 
 
@@ -636,14 +649,14 @@ class _MarkerCommentFenceScan(_ScanMatcher):
 
     def end(self, text, opened):
         column = opened.start(5) - opened.start(2)
-        closer = re.compile(r'[ \t]*%%{%d}(?!%%)' % len(opened.group(5)))
+        closer = re.compile(r'[ \t>]*%%{%d}(?!%%)' % len(opened.group(5)))
         at = opened.end()
         while at < len(text):
             stop = text.find('\n', at)
             stop = len(text) if stop == -1 else stop
             if closer.match(text, at, stop):
                 return stop
-            content = len(text[at:stop]) - len(text[at:stop].lstrip(' \t'))
+            content = len(text[at:stop]) - len(text[at:stop].lstrip(' \t>'))
             if at + content < stop and content < column:
                 return at
             at = stop + 1
@@ -651,7 +664,7 @@ class _MarkerCommentFenceScan(_ScanMatcher):
 
 
 _MARKER_COMMENT_FENCE = _MarkerCommentFence(
-    r'^((?:\A\ufeff)?)([ \t]*)((?:(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')?|:) +'
+    r'^((?:\A\ufeff)?)([ \t]*)((?:>[ \t]?)*(?:(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')?) +'
     r'(?:(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')? +)*)()(%%%+)([^\n]*)(\n|\Z)',
     r'([\s\S]*?)(?:([ \t]*)(%%%+)([^\n]*))?', ())
 
@@ -1637,13 +1650,13 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # verbatim. It is emitted as one token including the `=`, because
             # the format word without its sigil is not the construct. It takes
             # no title and no label, so its guard is the format word alone.
-            (r'^((?:\A\ufeff)?)(?:([ \t]+|' + _ATTACHED + r')|(?<!\+\n)(?<!\+ \n)(?<!\+\t\n))((`|~)\4{2,})'
+            (r'^((?:\A\ufeff)?)(?:([ \t]+|' + _ATTACHED + r')|)((`|~)\4{2,})'
              r'(?= ?=[a-zA-Z][\w+.-]*[ \t]*$)'
              r'([ \t]*)(=[a-zA-Z][\w+.-]*)([^\n]*)(\n)' + _FENCE_TAIL,
              _fenced(6, Text, Text, Punctuation, None, Text, Keyword.Type,
                      using(this, state='infostring'), Text,
                      _BODY, Text, Punctuation, Text)),
-            (r'^((?:\A\ufeff)?)(?:([ \t]+|' + _ATTACHED + r')|(?<!\+\n)(?<!\+ \n)(?<!\+\t\n))((`|~)\4{2,})'
+            (r'^((?:\A\ufeff)?)(?:([ \t]+|' + _ATTACHED + r')|)((`|~)\4{2,})'
              r'(?= ?(?:' + _FENCE_INFO + r')?[ \t]*$|' + _RECOVERED_INFO + r')'
              r'([ \t]*)([A-Za-z0-9_+#./-]+)?([^\n]*)(\n)' + _FENCE_TAIL,
              _fenced(6, Text, Text, Punctuation, None, Text, Name.Builtin,
@@ -1655,14 +1668,20 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # and the closer of a pair the rules above did not take. It colours
             # the delimiter run and its info string and claims nothing under it.
             #
+            # A column-0 line here is an info-string fallback, or a fence
+            # attached by `+` that found no closer: both are paragraph text
+            # whose run opens an inline code span to the paragraph end, which
+            # is also where an attached fence ends (carve#5304), so the inline
+            # rules take it.
+            #
             # WHAT THAT TRADES AWAY: an unterminated INDENTED fence runs to the
             # end of its container, and here it opens nothing, because the
             # lexer does not know where that container ends and a body run to
             # the end of input would bury every block after it
             # (markup-carve/pygments-carve#30).
-            (r'^(' + _MARGIN + r')(`{3,}|~{3,})([ \t]*)(=[a-zA-Z][\w+.-]*)',
+            (r'^(?!' + _FALLBACK + r')(' + _MARGIN + r')(`{3,}|~{3,})([ \t]*)(=[a-zA-Z][\w+.-]*)',
              bygroups(Text, Punctuation, Text, Keyword.Type)),
-            (r'^(' + _MARGIN + r')(`{3,}|~{3,})([ \t]*)([a-zA-Z][\w+#.-]*)?([^\n]*)',
+            (r'^(?!' + _FALLBACK + r')(' + _MARGIN + r')(`{3,}|~{3,})([ \t]*)([a-zA-Z][\w+#.-]*)?([^\n]*)',
              bygroups(Text, Punctuation, Text, Name.Builtin,
                       using(this, state='infostring'))),
 

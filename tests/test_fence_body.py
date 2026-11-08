@@ -547,7 +547,9 @@ INVALID_INFO = [
 
 
 def _buries(lexer, source, body):
-    return any(t is String.Backtick and body in v for t, v in lexer.get_tokens(source))
+    """Whether a fence body starts with ``body``. A fallback line's inline code
+    span holds it too, but after the info string (carve#4807)."""
+    return any(t is String.Backtick and v.startswith(body) for t, v in lexer.get_tokens(source))
 
 
 def _without_guard(marker):
@@ -562,7 +564,7 @@ def _without_guard(marker):
     return build_verbatim(SOURCE.replace(lines[0] + '\n', '', 1))
 
 
-UNGUARDED = _without_guard('+ _FENCE_INFO +')
+UNGUARDED = _without_guard('+ _RECOVERED_INFO +')
 UNGUARDED_RAW = _without_guard('(?= ?=[a-zA-Z]')
 
 
