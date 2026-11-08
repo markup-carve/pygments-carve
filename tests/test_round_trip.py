@@ -174,6 +174,10 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
     The bump to carve 3214cb6 adds one over 3022, the new document
     `645-a-comment-line-leaves-a-description-s-list-item-open-for-a-fence`,
     which carve-js main renders as its corpus HTML.
+    The spec 0.1.14 pin (carve 336b0e15) moves them to 165, 157 and 8 with the
+    lexer unchanged; the five new DEFAULTS documents end in a blank fence
+    payload line. The marker-line comment fence and the braced comment column
+    rule then take ten documents from the regression rule: 155 and 147.
 
     The ticket counted 32, comparing against the SOURCE rather than against what
     Pygments hands the rules. The 32nd is `250-line-endings-and-a-byte-order-
@@ -188,9 +192,9 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         _regression_source()
         .replace("options.setdefault('stripnl', False)", "options.setdefault('stripnl', True)")
         .replace("options.setdefault('ensurenl', False)", "options.setdefault('ensurenl', True)"))
-    assert count(both) == 105, count(both)
-    assert count(REGRESSION) == 102, count(REGRESSION)
-    assert count(DEFAULTS) == 3, count(DEFAULTS)
+    assert count(both) == 155, count(both)
+    assert count(REGRESSION) == 147, count(REGRESSION)
+    assert count(DEFAULTS) == 8, count(DEFAULTS)
     assert count(LEXER) == 0, count(LEXER)
 
 

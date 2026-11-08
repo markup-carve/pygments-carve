@@ -391,6 +391,30 @@ def _closers(text, rex, masked=False):
     return hit
 
 
+def _continues_past(text, start, end):
+    """Whether a run opened at ``start`` in block position keeps every later
+    line up to ``end`` at least one source column past its opener
+    (CARVE-P2-035). Mid-line, the inline production governs it alone."""
+    line = text.rfind('\n', 0, start) + 1
+    if not _BLOCK_PREFIX.fullmatch(text, line, start):
+        return True
+    column = start - line
+    at = text.find('\n', start, end)
+    while at != -1:
+        nxt = text.find('\n', at + 1, end)
+        stop = end if nxt == -1 else nxt
+        body = _QUOTE_PREFIX.match(text, at + 1, stop).end()
+        if body < stop and body - (at + 1) <= column:
+            return False
+        at = nxt
+    return True
+
+
+_QUOTE_PREFIX = re.compile(r'[ \t]*(?:>[ \t]*)*')
+_BLOCK_PREFIX = re.compile(
+    r'[ \t]*' + _MARKER_RUN + r'(?:(?:\[\^[^\]\n]+\]:|::?|\+)[ \t]+)?')
+
+
 _NAME_TAIL = re.compile(r'(?<![^\W_])(?<!/)[@#][\w.-]*$')
 
 
@@ -419,7 +443,7 @@ class _Scan:
     """
 
     def __init__(self, opener, rest, close, least=0, stop=False, masked=False,
-                 reach='line', whole=True, own=None):
+                 reach='line', whole=True, own=None, column=False):
         self.opener = opener
         self.pattern = opener + rest
         self.close = close if isinstance(close, tuple) else (close,)
@@ -429,6 +453,7 @@ class _Scan:
         self.reach = reach
         self.whole = whole
         self.own = own
+        self.column = column
         self._compiled = {}
 
     def compile(self, flags):
@@ -484,6 +509,8 @@ class _ScanMatcher:
             return None
         end = self.end(text, opened)
         if end is None:
+            return None
+        if self.scan.column and not _continues_past(text, pos, end):
             return None
         if not self.scan.whole:
             return opened
@@ -581,6 +608,42 @@ class _ContainerFenceScan(_ScanMatcher):
                 r'(?:%s){0,%d}?%s' % (body, _FENCE_BODY_LINES, closer)).match
         found = walk(text, opened.end())
         return found.end() if found else None
+
+
+class _MarkerCommentFence(_Scan):
+    """A `%%%` comment fence on a list item's or a description's marker line.
+
+    Its body is every following line that is blank or reaches the content
+    column. The first line holding an exact-width closer closes it, at any
+    column (corpus 864); a line further left ends it unclosed (carve#4907).
+    """
+
+    def matcher(self, flags):
+        return _MarkerCommentFenceScan(self, flags)
+
+
+class _MarkerCommentFenceScan(_ScanMatcher):
+
+    def end(self, text, opened):
+        column = opened.start(5) - opened.start(2)
+        closer = re.compile(r'[ \t]*%%{%d}(?!%%)' % len(opened.group(5)))
+        at = opened.end()
+        while at < len(text):
+            stop = text.find('\n', at)
+            stop = len(text) if stop == -1 else stop
+            if closer.match(text, at, stop):
+                return stop
+            content = len(text[at:stop]) - len(text[at:stop].lstrip(' \t'))
+            if at + content < stop and content < column:
+                return at
+            at = stop + 1
+        return len(text)
+
+
+_MARKER_COMMENT_FENCE = _MarkerCommentFence(
+    r'^((?:\A\ufeff)?)([ \t]*)((?:(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')?|:) +'
+    r'(?:(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')? +)*)()(%%%+)([^\n]*)(\n|\Z)',
+    r'([\s\S]*?)(?:([ \t]*)(%%%+)([^\n]*))?', ())
 
 
 #: A fence info string a container fence may carry: a raw format, or a
@@ -1666,6 +1729,10 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # A definition-list term. Its `:` descriptions are scoped only in
             # the `deflist` state it opens, so a `:` line with no term above it
             # stays a paragraph.
+            # A comment fence on a marker line hides its body too (corpus 337).
+            (_MARKER_COMMENT_FENCE,
+             bygroups(Text, Text, using(this, state='markerrun'), Text, Comment.Preproc,
+                      Comment, Text, Comment, Text, Comment.Preproc, Comment)),
             (r'^(' + _MARGIN + r')(::)( +[ \t]*)(?=[^ \t\n])',
              bygroups(Text, Punctuation, Text), ('deflist', 'termtail', 'heading')),
 
@@ -2047,7 +2114,10 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # one, and `{--}x-}` is a dash followed by text, not a deletion.
             (r'\{--\}', Punctuation),
             (_Braced(r'(\{-)' + _WHOLE, r'([\s\S]+?)(-\})'), bygroups(Punctuation, using(this, state='deleted'), Punctuation)),
-            (_Scan(r'(\{%)' + _WHOLE, r'([\s\S]*?)(%\})', r'%\}', reach='block'), bygroups(Comment.Preproc, Comment, Comment.Preproc)),
+            # A run in block position continues only on lines past its `{`
+            # (CARVE-P2-035); one that does not is paragraph text.
+            (_Scan(r'(\{%)' + _WHOLE, r'([\s\S]*?)(%\})', r'%\}', reach='block', column=True),
+             bygroups(Comment.Preproc, Comment, Comment.Preproc)),
 
             # An inline footnote carries content; a reference carries a label.
             # Each opens only where a `]` lies ahead in its paragraph: an unclosed
