@@ -89,6 +89,14 @@ def test_the_region_excludes_code_braces_and_escapes(source, run):
 def test_a_mention_name_is_not_the_region():
     assert (Name.Variable.Magic, '@a_b') in tokens('_@a_b_')
     assert marked('*a#b*c*') == []
+    # Only a real name: `@1_2` holds no letter, and a tag name stops at a dot.
+    assert marked('_@1_2_') == []
+    assert marked('_#a.b_c_') == []
+
+
+@pytest.mark.parametrize('lang', ['3d', 'c/asm', 'c++'])
+def test_a_recovered_fence_keeps_the_whole_language_token(lang):
+    assert (Name.Builtin, lang) in tokens('```%s bad\nx\n```\n' % lang)
 
 
 def test_only_the_closing_span_is_refused():

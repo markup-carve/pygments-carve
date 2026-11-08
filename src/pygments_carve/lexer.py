@@ -415,7 +415,17 @@ _BLOCK_PREFIX = re.compile(
     r'[ \t]*' + _MARKER_RUN + r'(?:(?:\[\^[^\]\n]+\]:|::?|\+)[ \t]+)?')
 
 
-_NAME_TAIL = re.compile(r'(?<![^\W_])(?<!/)[@#][\w.-]*$')
+#: A mention or a tag name, as the inline rules below scope them.
+_NAME = re.compile(r'(?<![^\W_])(?<!/)(?:@(?=[\w.-]*[A-Za-z])\w[\w.-]*|\#(?=[\w-]*[A-Za-z])\w[\w-]*)')
+
+
+def _in_name(text, start, at):
+    """Whether offset ``at`` sits inside a mention or tag name opened after ``start``."""
+    sigil = max(text.rfind('@', start, at), text.rfind('#', start, at))
+    if sigil == -1:
+        return False
+    name = _NAME.match(text, sigil)
+    return name is not None and name.end() > at
 
 
 class _Scan:
@@ -498,7 +508,7 @@ class _ScanMatcher:
         i = bisect.bisect_left(inner, start)
         while i < len(inner) and inner[i] < stop:
             # A mention or tag name is not the span's own region: `_@a_b_` forms.
-            if not _NAME_TAIL.search(text, start, inner[i]):
+            if not _in_name(text, start, inner[i]):
                 return True
             i += 1
         return False
@@ -1635,7 +1645,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
                      _BODY, Text, Punctuation, Text)),
             (r'^((?:\A\ufeff)?)(?:([ \t]+|' + _ATTACHED + r')|(?<!\+\n)(?<!\+ \n)(?<!\+\t\n))((`|~)\4{2,})'
              r'(?= ?(?:' + _FENCE_INFO + r')?[ \t]*$|' + _RECOVERED_INFO + r')'
-             r'([ \t]*)([a-zA-Z][\w+#.-]*)?([^\n]*)(\n)' + _FENCE_TAIL,
+             r'([ \t]*)([A-Za-z0-9_+#./-]+)?([^\n]*)(\n)' + _FENCE_TAIL,
              _fenced(6, Text, Text, Punctuation, None, Text, Name.Builtin,
                      using(this, state='infostring'), Text,
                      _BODY, Text, Punctuation, Text)),
