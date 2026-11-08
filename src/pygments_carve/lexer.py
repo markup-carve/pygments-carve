@@ -167,6 +167,31 @@ _FENCE_INFO = (
 _FENCE_BODY_LINES = 512
 
 
+#: The recovery of carve#4807: a language token that ends at whitespace, a
+#: quote, `{` or `[` and is followed by invalid metadata still opens a fence in
+#: that language, unless the rest of the line holds a run as long as the opener
+#: (```` ```js foo``` ```` stays an inline code span). `\3` is the opener run.
+_RECOVERED_INFO = (
+    r' ?[A-Za-z0-9_+#./-]+(?=[^\S\n]|[﻿"“”{\[])(?![^\n]*\3)[^\n]*$'
+)
+
+#: A column-0 opener right under a line ending in `+`. Attached by that `+`, it
+#: ends at its first blank (carve#5304), which this lexer does not model, so it
+#: keeps the indented reading: pair, or open nothing.
+_ATTACHED = r'(?<=\+\n)|(?<=\+ \n)|(?<=\+\t\n)'
+
+#: The body and closer of a fence pair. At column 0 (group 2 did not take part)
+#: the closer is optional and the body runs to it or to the end of the document
+#: (carve#4018, PART 0 S1). Nothing is searched ahead, so no line is scanned
+#: twice. An indented opener sits in a container the lexer does not track, so
+#: it still pairs within `_FENCE_BODY_LINES` or opens nothing.
+_FENCE_TAIL = (
+    r'((?(2)(?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?'
+    r'|(?:(?!\3\4*[ \t]*$)[^\n]*(?:\n|\Z))*))'
+    r'((?(2)\2))((?(2)\3\4*|(?:\3\4*)?))([ \t]*)$'
+)
+
+
 #: An ordered marker and its delimiter. The value is a number, a letter, or a
 #: roman run in ONE case (`Vim.` is prose). A letter or roman value with `.`
 #: needs two spaces after it and any glued attributes, so `J. R. R. Tolkien`
@@ -1432,16 +1457,16 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # also matches the line form.
             #
             # Whole is what makes an UNTERMINATED opener fall through to the
-            # line form, which is the rule: an opener with no matching closer
-            # ahead "does NOT open a block. The line degrades to a
-            # `comment_line`." A separate state cannot decide that - it has
-            # already been entered by the time the input runs out
-            # (markup-carve/pygments-carve#30). It is also the only shape that
-            # can carry the opener's own WIDTH (`%%%%` closes on `%%%%` alone,
-            # which is how a comment nests a shorter fence) and its COLUMN
-            # (every line up to the closer carries the opener's indent or is
-            # blank; a line further left has left the container, so a closer
-            # past it belongs to no open fence) into the search for the closer.
+            # line form. The spec opens the block without a closer and hides
+            # the rest of its host (carve#4907), but a column-0 `%%%` is as
+            # often the closer of a marker-line fence this lexer does not pair
+            # (`- %%%` ... `%%%`), and opening there would hide every later
+            # line; the line form hides only its own. Whole is also the only
+            # shape that can carry the opener's own WIDTH (`%%%%` closes on
+            # `%%%%` alone, which is how a comment nests a shorter fence) and
+            # its COLUMN (every line up to the closer carries the opener's
+            # indent or is blank; a line further left has left the container,
+            # so a closer past it belongs to no open fence) into the search.
             #
             # The `(?!\2)` on the blank alternative is not decoration. Without
             # it both alternatives match a whitespace-only line whenever the
@@ -1482,8 +1507,12 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # closer search never backtracks the way a second, overlapping
             # alternative made it (markup-carve/pygments-carve#34).
             #
-            # `_FENCE_BODY_LINES` IS THE BOUND ON THAT SEARCH, and it is load
-            # bearing. An opener that never finds its closer scans what is left
+            # AT COLUMN 0 THE CLOSER IS OPTIONAL (`_FENCE_TAIL`, carve#4018):
+            # the body runs to the closer or the end of the document, and
+            # nothing is searched ahead. An INDENTED opener still has to pair.
+            #
+            # `_FENCE_BODY_LINES` IS THE BOUND ON THE INDENTED SEARCH, and it is
+            # load bearing. An opener that never finds its closer scans what is left
             # of the document, so a file of openers that cannot pair - `` ```x ``
             # repeated - costs one scan per line and the whole is QUADRATIC.
             # Measured unbounded, doubling the input from 12000 to 96000
@@ -1493,16 +1522,16 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # the ratio near 2 that carve-grammars' `scan-superlinear.mjs` calls
             # linear.
             #
-            # WHAT THE BOUND TRADES AWAY: a fence whose body is longer than
-            # `_FENCE_BODY_LINES` does not pair, and its opener degrades to the
+            # WHAT THE BOUND TRADES AWAY: an indented fence whose body is longer
+            # than `_FENCE_BODY_LINES` does not pair, and its opener degrades to the
             # lone-fence line below. The longest body in the 1564-document spec
             # corpus is 3 lines and the longest across the spec's own
             # documentation is 76.
             #
             # THE OPENER MUST CONFORM BEFORE IT CLAIMS A BODY. `_FENCE_INFO` is
-            # the guard: an info string outside the grammar's three shapes is an
-            # INVALID-FENCE FALLBACK and opens nothing, so pairing on one would
-            # bury a paragraph the corpus renders. It is a lookahead rather than
+            # the guard, with the language recovery of `_RECOVERED_INFO`: any
+            # other info string is an INVALID-FENCE FALLBACK and opens nothing,
+            # so pairing on one would bury a paragraph the corpus renders. It is a lookahead rather than
             # the capture groups themselves, so the groups stay the ones the
             # lone-fence rules below use and the two readings of an opener line
             # cannot drift apart.
@@ -1511,36 +1540,28 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             # verbatim. It is emitted as one token including the `=`, because
             # the format word without its sigil is not the construct. It takes
             # no title and no label, so its guard is the format word alone.
-            (r'^((?:\A\ufeff)?)([ \t]*)((`|~)\4{2,})'
+            (r'^((?:\A\ufeff)?)(?:([ \t]+|' + _ATTACHED + r')|(?<!\+\n)(?<!\+ \n)(?<!\+\t\n))((`|~)\4{2,})'
              r'(?= ?=[a-zA-Z][\w+.-]*[ \t]*$)'
-             r'([ \t]*)(=[a-zA-Z][\w+.-]*)([^\n]*)(\n)'
-             r'((?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?)'
-             r'(\2)(\3\4*)([ \t]*)$',
+             r'([ \t]*)(=[a-zA-Z][\w+.-]*)([^\n]*)(\n)' + _FENCE_TAIL,
              _fenced(6, Text, Text, Punctuation, None, Text, Keyword.Type,
                      using(this, state='infostring'), Text,
                      _BODY, Text, Punctuation, Text)),
-            (r'^((?:\A\ufeff)?)([ \t]*)((`|~)\4{2,})'
-             r'(?= ?(?:' + _FENCE_INFO + r')?[ \t]*$)'
-             r'([ \t]*)([a-zA-Z][\w+#.-]*)?([^\n]*)(\n)'
-             r'((?:[^\n]*\n){0,' + str(_FENCE_BODY_LINES) + r'}?)'
-             r'(\2)(\3\4*)([ \t]*)$',
+            (r'^((?:\A\ufeff)?)(?:([ \t]+|' + _ATTACHED + r')|(?<!\+\n)(?<!\+ \n)(?<!\+\t\n))((`|~)\4{2,})'
+             r'(?= ?(?:' + _FENCE_INFO + r')?[ \t]*$|' + _RECOVERED_INFO + r')'
+             r'([ \t]*)([a-zA-Z][\w+#.-]*)?([^\n]*)(\n)' + _FENCE_TAIL,
              _fenced(6, Text, Text, Punctuation, None, Text, Name.Builtin,
                      using(this, state='infostring'), Text,
                      _BODY, Text, Punctuation, Text)),
 
-            # A FENCE LINE THIS LEXER DOES NOT PAIR: an opener with no matching
-            # closer ahead, and the closer of a pair the rules above did not
-            # take. It colours the delimiter run and its info string and claims
-            # nothing under it.
+            # A FENCE LINE THIS LEXER DOES NOT PAIR: an indented opener with no
+            # matching closer ahead, an opener whose info string falls back,
+            # and the closer of a pair the rules above did not take. It colours
+            # the delimiter run and its info string and claims nothing under it.
             #
-            # WHAT THAT TRADES AWAY, written down rather than left to be
-            # rediscovered: an unterminated fence at document level really does
-            # open a code block that runs to the end of what encloses it, and
-            # here it does not. The line-based sibling grammars make the same
-            # trade for the same reason - inside a container an opener with no
-            # closer opens nothing, and a body that ran to end of input there
-            # would swallow the container's own closer and every block after
-            # it. Burial is the direction that loses a reader's text
+            # WHAT THAT TRADES AWAY: an unterminated INDENTED fence runs to the
+            # end of its container, and here it opens nothing, because the
+            # lexer does not know where that container ends and a body run to
+            # the end of input would bury every block after it
             # (markup-carve/pygments-carve#30).
             (r'^(' + _MARGIN + r')(`{3,}|~{3,})([ \t]*)(=[a-zA-Z][\w+.-]*)',
              bygroups(Text, Punctuation, Text, Keyword.Type)),
