@@ -158,6 +158,8 @@ PINS = [
         note='The label is lexed as inline content, a character run at a time.'),
     Pin('reference link', 'a [t][r] b',
         [(Name.Entity, '[t]'), (Name.Label, '[r]')]),
+    Pin('reference across a line stays verbatim', '[*x*\ny][]\n', [],
+        note='CARVE-P3-004: the interior is not rescanned, so `*x*` is text.'),
     Pin('label carrying attributes', 'a [t]{.c} b',
         [(Name.Entity, '['), (Name.Entity, 't]'),
          (Name.Attribute, '{.c}')]),
@@ -191,17 +193,17 @@ PINS = [
         [(Name.Variable.Magic, '@user')]),
     Pin('tag', 'a #tag b',
         [(Name.Variable.Instance, '#tag')]),
-    Pin('arrow and comparison', 'a -> b',
-        [(Operator, '->')],
-        note='One rule, nineteen alternatives across four; a per-rule pin '
+    Pin('arrow and comparison', 'a --> b',
+        [(Operator, '-->')],
+        note='One rule, fourteen alternatives across four; a per-rule pin '
              'cannot see one going missing. tests/test_typography.py is what '
              'holds the alternation down.'),
     Pin('en dash', 'a -- b',
         [(Punctuation, '--')]),
     Pin('ellipsis', 'a ... b',
         [(Punctuation, '...')]),
-    Pin('typographic symbol', 'a (c) b',
-        [(Name.Constant, '(c)')]),
+    Pin('typographic symbol', 'a (tm) b',
+        [(Name.Constant, '(tm)')]),
 ]
 
 

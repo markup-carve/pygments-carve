@@ -250,6 +250,13 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     generated container documents that carve-js main renders as their corpus
     HTML. None of them is a rule change here - the current lexer buries
     nothing in any of them.
+
+    The spec 0.1.14 pin (carve 336b0e15) brings the list to 69 with the lexer
+    unchanged. The marker-line comment fence (corpus 337, 864) and the column
+    rule for a braced comment run in block position (CARVE-P2-035) then take
+    25 of them, because the current rules read those documents and the
+    regression rule no longer reaches them: 44. The same fence on a footnote's
+    or a description's marker line (pygments-carve#134) takes ten more: 34.
     """
     hits = []
     for path in DOCUMENTS:
@@ -260,71 +267,61 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
                                html.read_text(encoding='utf-8')):
             hits.append(path.name)
     assert sorted(hits) == sorted([
-        '167-unterminated-comment-fence.crv',
-        '326-a-column-0-line-after-a-container-s-last-block-when-that-block-l'
-        'eft-no-paragraph-open-6.crv',
-        '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-4.'
-        'crv',
-        '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-5.'
-        'crv',
-        '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-6.'
-        'crv',
-        '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-7.'
-        'crv',
-        '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-8.'
-        'crv',
-        '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form.cr'
+        '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-5.cr'
         'v',
-        '445-a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-fol'
-        'lower-in-the-item-10.crv',
-        '445-a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-fol'
-        'lower-in-the-item-11.crv',
-        '445-a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-fol'
-        'lower-in-the-item-4.crv',
-        '445-a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-fol'
-        'lower-in-the-item-5.crv',
-        '445-a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-fol'
-        'lower-in-the-item-6.crv',
-        '445-a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-fol'
-        'lower-in-the-item-7.crv',
-        '445-a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-fol'
-        'lower-in-the-item.crv',
-        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-f'
-        'orm-does-3.crv',
-        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-f'
-        'orm-does-5.crv',
-        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-f'
-        'orm-does-6.crv',
-        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-f'
-        'orm-does-7.crv',
-        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-f'
-        'orm-does-9.crv',
-        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-f'
-        'orm-does.crv',
-        '449-a-comment-below-a-description-body-s-column-ends-the-body-4.crv',
+        '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-6.cr'
+        'v',
+        '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-7.cr'
+        'v',
+        '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-8.cr'
+        'v',
+        '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form.crv',
+        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-for'
+        'm-does-3.crv',
+        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-for'
+        'm-does-5.crv',
+        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-for'
+        'm-does-6.crv',
+        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-for'
+        'm-does-7.crv',
+        '446-a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-for'
+        'm-does.crv',
         '449-a-comment-below-a-description-body-s-column-ends-the-body-6.crv',
-        '449-a-comment-below-a-description-body-s-column-ends-the-body-9.crv',
-        '504-a-comment-or-a-definition-under-a-definition-term-folds-at-every'
-        '-depth-22.crv',
-        '508-a-comment-span-s-closer-below-its-host-s-column-stays-a-delimite'
-        'r-5.crv',
-        '508-a-comment-span-s-closer-below-its-host-s-column-stays-a-delimite'
-        'r-6.crv',
-        '512-a-comment-span-s-closer-column-does-not-move-the-item-s-ownershi'
-        'p-10.crv',
-        '512-a-comment-span-s-closer-column-does-not-move-the-item-s-ownershi'
-        'p-11.crv',
-        '512-a-comment-span-s-closer-column-does-not-move-the-item-s-ownershi'
-        'p-12.crv',
-        '515-a-nested-marker-comment-keeps-its-own-ownership-2.crv',
-        '515-a-nested-marker-comment-keeps-its-own-ownership-4.crv',
-        '515-a-nested-marker-comment-keeps-its-own-ownership-5.crv',
-        '515-a-nested-marker-comment-keeps-its-own-ownership.crv',
-        '556-a-closed-block-leaves-no-frame-for-the-line-below-14.crv',
-        '583-a-comment-between-a-heading-and-a-colon-fence-leaves-the-fence-a'
-        'n-opener.crv',
+        '508-a-comment-span-s-closer-below-its-host-s-column-stays-a-delimiter-'
+        '5.crv',
+        '583-a-comment-between-a-heading-and-a-colon-fence-leaves-the-fence-an-'
+        'opener.crv',
         '620-generated-container-documents-5.crv',
-        '620-generated-container-documents-8.crv',
+        '855-a-comment-block-in-a-line-block-leaves-nothing-2.crv',
+        '867-an-indented-comment-block-in-a-line-block-leaves-nothing-3.crv',
+        '888-a-comment-span-in-a-quote-closes-at-an-unmarked-closer-2.crv',
+        '888-a-comment-span-in-a-quote-closes-at-an-unmarked-closer-3.crv',
+        '888-a-comment-span-in-a-quote-closes-at-an-unmarked-closer-5.crv',
+        '929-a-line-that-misses-the-host-ends-it-when-a-comment-closer-lies-ahe'
+        'ad-3.crv',
+        '929-a-line-that-misses-the-host-ends-it-when-a-comment-closer-lies-ahe'
+        'ad-4.crv',
+        '933-a-comment-closer-ahead-is-read-from-the-span-s-raw-lines-2.crv',
+        '933-a-comment-closer-ahead-is-read-from-the-span-s-raw-lines.crv',
+        '939-a-line-after-a-comment-block-in-a-line-block-reads-the-stanza-with'
+        'out-it-3.crv',
+        '939-a-line-after-a-comment-block-in-a-line-block-reads-the-stanza-with'
+        'out-it-6.crv',
+        '939-a-line-after-a-comment-block-in-a-line-block-reads-the-stanza-with'
+        'out-it.crv',
+        '943-a-comment-line-below-a-nested-line-block-s-column-stays-in-its-spa'
+        'n-3.crv',
+        '943-a-comment-line-below-a-nested-line-block-s-column-stays-in-its-spa'
+        'n-4.crv',
+        '943-a-comment-line-below-a-nested-line-block-s-column-stays-in-its-spa'
+        'n-6.crv',
+        '943-a-comment-line-below-a-nested-line-block-s-column-stays-in-its-spa'
+        'n-7.crv',
+        '943-a-comment-line-below-a-nested-line-block-s-column-stays-in-its-spa'
+        'n.crv',
+        '946-a-span-s-closer-after-a-blank-keeps-the-list-tight-2.crv',
+        '946-a-span-s-closer-after-a-blank-keeps-the-list-tight-3.crv',
+        '973-open-state-lifetime-boundaries-15.crv',
     ]), hits
 
 

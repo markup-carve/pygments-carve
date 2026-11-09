@@ -35,6 +35,18 @@ _INFO = re.compile(
     r'|\[[^\]\n]*\])?[ \t]*$'
 )
 
+#: The recovery of carve#4807: a language token ending at whitespace, a quote,
+#: `{` or `[`, then invalid metadata, still opens a fence in that language -
+#: unless the rest of the line holds a run as long as the opener.
+_RECOVERED = re.compile(r'^ ?[A-Za-z0-9_+#./-]+(?=[^\S\n]|[\ufeff"\u201c\u201d{\[])')
+
+
+def _opens(run, tail):
+    if _INFO.match(tail):
+        return True
+    return bool(_RECOVERED.match(tail)) and run not in tail
+
+
 #: A comment fence, whose body this reader steps over rather than pairing.
 _COMMENT = re.compile(r'^([ \t]*)(%{3,})([^\n]*)$')
 
@@ -75,8 +87,10 @@ def bodies(source):
     """Every fenced body in ``source``, as spans into it.
 
     Front matter is stepped over first, then each line is read in order. An
-    opener with no closer ahead pairs with nothing and yields no body, which is
-    the same answer the lexer gives.
+    opener at column 0 with no closer ahead runs to the end of the source
+    (carve#4018); an indented one, or one attached by a `+` on the line above,
+    pairs with nothing and yields no body, which
+    is the same answer the lexer gives.
     """
     lines = source.split('\n')
     offsets, at = [], 0
@@ -110,10 +124,10 @@ def bodies(source):
         if not match:
             index += 1
             continue
-        if not _INFO.match(match.group(5)):
+        indent, run = match.group(1), match.group(2)
+        if not _opens(run, match.group(5)):
             index += 1
             continue
-        indent, run = match.group(1), match.group(2)
         raw = re.match(r' ?=([a-zA-Z][\w+.-]*)', match.group(5))
         for j in range(index + 1, len(lines)):
             other = _FENCE.match(lines[j])
@@ -123,6 +137,14 @@ def bodies(source):
                 index = j + 1
                 break
         else:
+            above = index - 1
+            while above > 0 and re.match(r'[ \t]*\{[^{}\n]*\}[ \t]*$', lines[above]):
+                above -= 1  # attribute lines between the `+` and its fence (carve#5304)
+            attached = index > 0 and re.search(r'[-*.:>)][ \t]\+[ \t]?$', lines[above])
+            if not indent and not attached and index + 1 < len(lines):
+                found.append(Body(offsets[index + 1], len(source), run, index + 1,
+                                  raw=raw and raw.group(1)))
+                break
             index += 1
     return found
 
@@ -153,7 +175,7 @@ def container_bodies(source):
     while index < len(lines):
         match = _CONTAINER_FENCE.match(lines[index])
         if (not match or not (match.group('quote') or match.group('marker'))
-                or not _INFO.match(match.group('tail'))):
+                or not _opens(match.group('run'), match.group('tail'))):
             index += 1
             continue
         run = match.group('run')

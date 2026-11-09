@@ -65,7 +65,7 @@ define only the parent token keep their existing colors.
 | Construct | Token |
 |-----------|-------|
 | Header marker `\|=` | `Operator.Table.Header` |
-| Glued alignment run or alignment-only cell | `Operator.Table.Alignment` |
+| Braced alignment, deprecated glued run, or alignment-only cell | `Operator.Table.Alignment` |
 | Rowspan cell `^` | `Operator.Table.Rowspan` |
 | Colspan cell `<` | `Operator.Table.Colspan` |
 | Cell boundary `\|` | `Punctuation.Table` |
@@ -73,8 +73,11 @@ define only the parent token keep their existing colors.
 | Caption caret `^` | `Punctuation.Caption` |
 | Plain caption text | `Generic.Subheading.Caption` |
 
-A header marker with alignment, such as `\|=<`, emits the header marker and
-alignment run as separate tokens. Whitespace around a marker-only cell stays
+Cell alignment is written in the cell's leading braces, such as `\|={>}` or
+`\|{> .num}`. The braces and any attributes are `Name.Attribute`, and the
+alignment symbols are `Operator.Table.Alignment`. The deprecated glued prefix,
+such as `\|=<`, still emits the header marker and alignment run as separate
+tokens. Whitespace around a marker-only cell stays
 in that cell's token.
 
 ## Fence bodies in their own language
@@ -105,27 +108,32 @@ same trade-off the Prism and highlight.js grammars make (match at any indent,
 over-colour the rare invalid case) so the three surfaces agree; the TextMate
 grammar in carve-grammars is the surface that makes the distinction.
 
-**A fence is matched whole, and an unpaired opener claims nothing.** A code
+**A fence is matched whole, and an opener at column 0 needs no closer.** A code
 fence, a raw block, front matter and a comment fence are each matched by ONE
 rule spanning opener, body and closer, because a Pygments state cannot hold a
 body: the stack resets at every newline no rule matches, so a state pushed on
 the opener's newline is abandoned before one body character is read
 (markup-carve/pygments-carve#32). Whole is also what carries the opener's width,
-character and column into the search for its closer. The trade is at the other
-end: an opener with no closer ahead really does open a code block that runs to
-the end of what encloses it, and here it colours its own line and claims nothing
-under it - the reading the line-based sibling grammars take, because a body that
-ran to end of input inside a container would swallow the container's own closer
-and every block after it. An opener whose info string is outside the three
-shapes the grammar admits does not pair either, because such a line opens no
-block at all and the corpus renders it as a paragraph. Nor does a body longer
-than 512 lines; that bound is what keeps a file of openers that can never pair
-from costing a scan of the document per line.
+character and column into the search for its closer.
+
+A code or raw fence at column 0 runs to its closer or to the end of the
+document, as the spec reads an unclosed fence (markup-carve/carve#4018). An
+opener the lexer cannot end correctly claims nothing under it and colours its
+own line: an indented opener, whose container end the lexer does not track, a
+fence attached by a `+` on the line above, which ends at its first blank, and a
+column-0 comment fence, which is as often the closer of a marker-line fence.
+Those indented openers pair only within 512 lines; that bound is what keeps a
+file of openers that can never pair from costing a scan of the document per
+line. An info string outside the three shapes the grammar admits opens no block,
+except that a language token followed by invalid metadata keeps the fence and
+its language (```` ```js title="x" ````, markup-carve/carve#4807).
 
 A fence opened inside a container pairs too: on a list item's or a
 description's marker line, with its closer at that item's content column, and
 behind a quote marker, with every line up to the closer carrying the marker.
-The same 512-line bound applies.
+The same 512-line bound applies. A `%%%` comment fence on an item's marker line
+hides its body up to the first closer of its width, at any column, or up to a
+line left of the item's content column.
 
 **A paragraph is recognized where one starts after a blank line.** List markers
 and captions do not interrupt a paragraph, so `para` followed by `- x` is one

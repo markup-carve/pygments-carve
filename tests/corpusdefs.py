@@ -28,9 +28,10 @@ import re
 _MARKER = r'(?:>+|(?:[-*+]|(?:\d+|[A-Za-z]+)[.)]|\.)(?:\{[^{}\n]*\})?)'
 
 #: A definition line: markers, then the opener, label, colon, a literal space
-#: separator and a non-empty payload.
+#: separator and a non-empty payload. A label never starts with `@`
+#: (CARVE-P3-003): `[@key]: entry` renders a mention, not its literal text.
 _DEFINITION = re.compile(
-    r'^[ \t]*((?:' + _MARKER + r'[ \t]+)*)(\[\^|\*\[|\[)([^\[\]\n]+)(\]:)( )(\S)'
+    r'^[ \t]*((?:' + _MARKER + r'[ \t]+)*)(\[\^|\*\[|\[)(?!@)([^\[\]\n]+)(\]:)( )(\S)'
 )
 
 #: A fence opener or closer. A definition inside one is payload, not markup.

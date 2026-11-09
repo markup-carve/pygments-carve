@@ -58,7 +58,9 @@ def _sharp(mutant, pins):
 MASKED = [
     ('a *b\\* c', ((String.Escape, '\\*'),)),
     ('a _b\\_ c', ((String.Escape, '\\_'),)),
-    ('a *x*b, \\*x\\*', ((String.Escape, '\\*'), (String.Escape, '\\*'))),
+    # Not `a *x*b, ...`: that content holds `x*b`, which refuses the span on
+    # its own (carve#4836), so it no longer proves the mask.
+    ('a *x b, \\*x\\*', ((String.Escape, '\\*'), (String.Escape, '\\*'))),
     ('*a [b*](u)', ((Name.Entity, '[b*]'), (Punctuation, '('), (Name.Tag, 'u'),
                     (Punctuation, ')'))),
     ('/a [b/ c](u)', ((Name.Entity, '[b/ c]'), (Punctuation, '('), (Name.Tag, 'u'),

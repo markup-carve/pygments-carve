@@ -94,10 +94,9 @@ def test_a_non_definition_on_a_marker_line_stays_content(source):
 
 
 @pytest.mark.parametrize('marker', ['- ', '> '])
-def test_an_abbreviation_is_defined_at_document_level_only(marker):
-    """corpus 179 and 180: a marker line does not define an abbreviation."""
-    assert not [v for t, v in run(marker + '*[HTML]: Hyper Text') if t is Name.Entity]
-    # ... while the same definition at document level does.
+def test_an_abbreviation_is_defined_in_every_container(marker):
+    """corpus 179 and 180: a marker line defines an abbreviation too (CARVE-P12-026)."""
+    assert (Name.Entity, 'HTML') in run(marker + '*[HTML]: Hyper Text')
     assert (Name.Entity, 'HTML') in run('*[HTML]: Hyper Text')
 
 
@@ -208,11 +207,12 @@ def test_a_definition_behind_a_non_marker_is_prose(line):
     ':: A term that\n   wraps\n+\n: d\n',
     ':: t\n+ a |\n: d\n',
 ])
-def test_a_plus_line_under_a_term_is_the_term_s_text(source):
-    """corpus 593: `:: t`, `+` renders the term `t +`, not a continuation."""
+def test_a_plus_line_under_a_term_is_paragraph_text(source):
+    """A term is one line (carve#4894): `:: t`, `+`, `: d` is a term and the paragraph `+ : d`."""
     tokens = run(source)
     assert (Punctuation, '+') not in tokens
-    assert (Punctuation, ':') in tokens
+    assert (Operator, '+') not in tokens
+    assert (Punctuation, ':') not in tokens
 
 
 def test_a_lone_plus_under_a_description_is_still_a_continuation_marker():
