@@ -617,6 +617,9 @@ GUARDS = [
            (Punctuation.Table, '|')]),
     Guard('a row ends in a pipe', 33, "(?=' + _ROW_END + r')", 0,
           '| a | b\n', [], [(Punctuation.Table, '|'), (Punctuation.Table, '|')]),
+    # carveToHtml: `<p>{.c} a</p>`.
+    Guard('an attribute line holds only attribute blocks', 34, r'(?=[ \t]*(?:\n|\Z))', 0,
+          '{.c} a\n', [], [(Name.Attribute, '{.c}')]),
 ]
 
 SAMPLED = [g for g in GUARDS if g.sample is not None]
