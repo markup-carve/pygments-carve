@@ -48,34 +48,6 @@ NOT_COVERED = {
                     'inside a fence is `callout marker in fence`, and still scoped',
 }
 
-#: Rows the 0.1.14 spec turned into text, which the inventory still samples
-#: (markup-carve/carve-grammars#830).
-_STALE_TEXT = {
-    'typography arrow deprecated reversed': 'markup-carve/carve#4815',
-    'typography arrow deprecated forward': 'markup-carve/carve#4815',
-    'typography arrow deprecated bidirectional': 'markup-carve/carve#4815',
-    'typography symbol copyright': 'markup-carve/carve#4808',
-    'typography symbol registered': 'markup-carve/carve#4808',
-    'ordered marker alpha': 'markup-carve/carve#4811, one space after a letter marker',
-    'ordered marker roman': 'markup-carve/carve#4811, one space after a roman marker',
-    'ordered marker roman lowercase run': 'markup-carve/carve#4811, one space after a roman marker',
-    'ordered marker roman uppercase run': 'markup-carve/carve#4811, one space after a roman marker',
-    'ordered marker roman word': 'markup-carve/carve#4811, one space after a roman marker',
-}
-NOT_COVERED.update({name: 'text since %s (markup-carve/carve-grammars#830)' % why
-                    for name, why in _STALE_TEXT.items()})
-NOT_COVERED['an attribute line spans lines'] = (
-    'the sample `{.a` + newline + `.b}` is paragraph text: a continuation line must pass '
-    'the opening `{` (carve corpus 253-...-does-2, carve#5830; markup-carve/carve-grammars#843)')
-
-_TEXT_SHAPES = {
-    'footnote ref': '`text[^1] end` has no `[^1]:` definition',
-    'closing bracket with earlier line opener': 'the `]` of `x]{.c}` closes no span',
-    'link destination with earlier line text': 'the `]` of `x](u){.c}` closes no span',
-}
-NOT_COVERED.update({name: 'text in carve-js: %s (markup-carve/carve-grammars#848)' % why
-                    for name, why in _TEXT_SHAPES.items()})
-
 LEXER = CarveLexer()
 CONSTRUCTS = load_constructs() if inventory.available() else []
 
