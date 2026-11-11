@@ -84,6 +84,7 @@ def test_the_reproduction_of_143_is_text():
     '[a](foo[bar)\nx]{.x}\n',
     '<http://a[b>\nx]{.x}\n',
     '[p]{key="[a"} x]{.x}\n',
+    '[a\n| t |{.r}\nb]{.x}\n',
 ])
 def test_a_closer_with_no_open_span_takes_no_block(source):
     assert '{.x}' not in attributes(source)
@@ -110,6 +111,7 @@ def test_a_closer_with_no_open_span_takes_no_block(source):
     '[[a](u)\nb]{.x}\n',
     '[x](a(b(c)d)e){.x}\n',
     '[a]{.k}[b\nc]{.x}\n',
+    '[a\n|x| foo\nb]{.x}\n',
 ])
 def test_a_span_opened_earlier_in_the_paragraph_takes_its_block(source):
     assert attributes(source)[-1] == '{.x}'

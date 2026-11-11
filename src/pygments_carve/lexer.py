@@ -1683,7 +1683,7 @@ _HEADING_START = re.compile(r'#{1,6}(?:[ \t]|$)')
 _ITEM_START = re.compile(r'(?:[-*.]|' + _ORDERED + r')[ \t]|\[\^[^\]\n]+\]: ')
 #: A line that is a block of its own, or a fence line: a break, a div fence, an
 #: attribute line, a table row, or a code or comment fence.
-_OWN_BLOCK = re.compile(r'(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$|:{3,}|\|(?=.*\|)'
+_OWN_BLOCK = re.compile(r'(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$|:{3,}|\|(?=' + _ROW_END + r')'
                         r'|`{3,}|~{3,}|%{3,}|(?:' + _ATTRS_LINE + r')+[ \t]*$')
 
 
