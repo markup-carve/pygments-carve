@@ -146,8 +146,8 @@ def _wraps_past_brace(text, start, end):
                 if col == 0 or col <= brace:
                     return False
             if quote:
-                if ch == '\\':
-                    at, col = at + 1, col + 1
+                if ch == '\\' and at + 1 < end:
+                    at, col, ch = at + 1, col + 1, text[at + 1]
                 elif ch == quote:
                     quote = None
             elif ch in '"\'':
