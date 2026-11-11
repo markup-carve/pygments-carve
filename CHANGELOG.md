@@ -26,6 +26,15 @@ The lexer follows the Carve 0.1.14 readings.
 - An abbreviation definition behind a container marker is a definition, and
   marker-line `%%%` comment fences and braced comment runs follow the column
   rules (#133).
+- A wrapped block attribute line counts only when its continuation is
+  indented past the opening brace (#141).
+- An inline attribute block is colored only after an element it attaches to
+  (#145): a footnote reference the document defines, or a bracket span opened
+  earlier in the same paragraph (#148).
+- A `%%%` comment fence with no closer hides the rest of its host, and a fence
+  in a quote or on a task item's or quoted item's marker line is paired (#150).
+- An autolink body takes only the characters the spec admits, so an address
+  holding a bracket or a URL holding a brace is text (#151).
 
 ### Improvements
 
