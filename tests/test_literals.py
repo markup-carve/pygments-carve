@@ -56,6 +56,8 @@ OTHER_CONSTRUCT = {
                             'grammars make the same trade'),
     'a lone plus is not a table continuation':
         (Operator, 'a `continuation_marker`'),
+    'a letter marker with one space is text in a quote':
+        (Generic.Emph, 'quote text; a list marker would be Number.Integer'),
 }
 
 #: row name -> why this lexer still scopes the payload. Empty since
