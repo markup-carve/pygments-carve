@@ -736,33 +736,51 @@ def _owner_column(text, line, column, depth, base):
     """``(column, verse)``: the content column an own-line opener at ``column``
     sits in, the nearest marker line above it reaches, else the quote's or
     document's edge; and whether the nearest colon fence above opens a line
-    block."""
-    limit, at, verse = column, line, None
-    for _ in range(64):
+    block.
+
+    Each step is memoized by its line and state, so a later opener in the same
+    container stops where an earlier walk passed and the walks stay linear.
+    """
+    memo = _indexes(text).setdefault('comment-owner', {})
+    limit, at, path, result = column, line, [], None
+    while result is None:
         if at == 0:
+            result = (base, None)
             break
         stop = at - 1
         at = text.rfind('\n', 0, stop) + 1
+        key = (at, limit, depth, base)
+        if key in memo:
+            result = memo[key]
+            break
         found, width, _, indent = _line_prefix(text, at, stop)
-        if found > depth:
+        colon = None
+        if found == depth and at + width < stop:
+            colon = _COLON_LINE.match(text, at + width, stop)
+        path.append((key, None if colon is None else colon.group(1) is not None))
+        if found > depth or at + width == stop:
             continue
         if found < depth:
+            result = (base, None)
             break
-        if at + width == stop:
-            continue
-        if verse is None:
-            colon = _COLON_LINE.match(text, at + width, stop)
-            if colon:
-                verse = colon.group(1) is not None
         for content in reversed(_content_columns(text, at + width, stop, at)):
             if content <= limit:
-                return content, verse
+                result = (content, None)
+                break
+        if result is not None:
+            break
         if indent < limit and _lazy(text, at):
             continue
         if indent <= base:
+            result = (base, None)
             break
         limit = min(limit, indent)
-    return base, verse
+    owner, verse = result
+    for key, colon in reversed(path):
+        if colon is not None:
+            verse = colon
+        memo[key] = (owner, verse)
+    return owner, verse
 
 
 def _lazy(text, at):

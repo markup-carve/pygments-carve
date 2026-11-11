@@ -42,6 +42,8 @@ def shown(source):
     ('> p\n>\n>   %%%\n> a\n', ['>', 'p', '>', '>', '>']),
     ('- > %%%\n  > a\nb\n', ['-', '>', '>', 'b']),
     ('- > %%%\n\n  > w\n', ['-', '>', '>', 'w']),
+    # The owner is found however far above the opener its marker line is.
+    ('- i\n' + '  x\n' * 100 + '  %%%\n  s\nout\n', ['-', 'i'] + ['x'] * 100 + ['out']),
     # An indented `%%%` in a line block is verse (CARVE-P9-044).
     ('::: |\n    %%%\n  x\n    %%%\n:::\n', [':::', '|', 'x', ':::']),
 ])
@@ -61,6 +63,7 @@ def test_a_quoted_fence_keeps_its_markers_as_punctuation():
     '- %%%\n' + '  x\n' * 32000,
     '> %%%\n' + '> x\n' * 32000,
     'p\n' * 8000 + '  %%%\n' + 'x\n' * 8000,
+    '- i\n' + '  x\n  %%%\n  s\n  %%%\n' * 8000,
 ])
 def test_a_long_fence_body_is_read_once(source):
     start = time.perf_counter()
