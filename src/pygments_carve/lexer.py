@@ -1731,9 +1731,17 @@ def _paragraph_spans(text):
     return spans
 
 
-#: The prefix of an inline footnote or a `:name[...]` extension, whose `]` no
-#: link destination follows.
-_NOT_A_LINK = re.compile(r'(?<!\\)(?:\\\\)*(?:\^|:[a-zA-Z][\w-]*)\Z')
+def _not_a_link(text, at):
+    """Whether the `[` at `at` opens an inline footnote or a `:name[...]` extension."""
+    if at and text[at - 1] == '^':
+        return not _escaped(text, at - 1)
+    name = at
+    while name and (text[name - 1].isalnum() or text[name - 1] in '_-'):
+        name -= 1
+    while name < at and not text[name].isalpha():
+        name += 1
+    return (name < at and name > 0 and text[name - 1] == ':'
+            and not _escaped(text, name - 1))
 
 
 def _code_spans(text, start, end):
@@ -1787,7 +1795,7 @@ def _bracket_closers(text, start, end):
             brackets.append(i - 1)
         elif c == ']':
             closers[i - 1] = bool(brackets)
-            if brackets and _NOT_A_LINK.search(text, max(start, brackets[-1] - 64), brackets[-1]):
+            if brackets and _not_a_link(text, brackets[-1]):
                 notes.add(i - 1)
             if brackets:
                 brackets.pop()
