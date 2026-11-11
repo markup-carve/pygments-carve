@@ -91,6 +91,8 @@ def test_a_colon_line_outside_a_description_list_hosts_nothing(source):
 @pytest.mark.parametrize('source', [
     ':: t\n\n: +\n{.x}\n```\nx\n\n*b*\n',
     ':: t\n: a\n\n: +\n{.x}\n```\nx\n\n*b*\n',
+    ':: t\n  \n: +\n{.x}\n```\nx\n\n*b*\n',
+    ':: t\n\t\n: +\n{.x}\n```\nx\n\n*b*\n',
 ])
 def test_a_description_hosts_a_fence(source):
     assert body(source) == 'x\n'
@@ -124,6 +126,8 @@ def test_the_host_walk_is_linear(unit):
     ('- +\n {.x\n .y}\npara\n', ['{.x\n .y}']),
     ('1. +\n  {.x\n .y}\npara\n', ['{.x\n .y}']),
     ('- a\n\n {.x\n .y}\npara\n', ['{.x\n .y}']),
+    ('- a\n  \n {.x\n .y}\npara\n', ['{.x\n .y}']),
+    ('- +\n \n {.x\n .y}\npara\n', ['{.x\n .y}']),
     # Directly under item text it is a lazy line; at the marker's own column
     # under a nested `+` it is the `+`'s block.
     ('- a\n {.x\n .y}\npara\n', []),

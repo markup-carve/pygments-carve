@@ -827,7 +827,7 @@ def _in_deflist(text, start):
         if line.startswith(':: '):
             found = True
             break
-        if line and not line.startswith(': '):
+        if line.strip(' \t') and not line.startswith(': '):
             found = False
             break
         seen.append(start)
@@ -869,15 +869,19 @@ def _closes_item(text, line, start):
     if flush left. Directly under item text the line is lazy text instead."""
     if start == line:
         return False
-    end = line - 1
-    while end > 0 and text[end - 1] == '\n':
-        end -= 1
-    above = text[text.rfind('\n', 0, end) + 1:end] if end > 0 else ''
+    end, blank = line - 1, False
+    while end > 0:
+        above = text[text.rfind('\n', 0, end) + 1:end]
+        if above.strip(' \t'):
+            break
+        end, blank = end - len(above) - 1, True
+    else:
+        return False
     lead = len(above) - len(above.lstrip(' '))
     m = _BLOCK_OPENER.match(above, lead)
     if not (m and m.group('item')) or _columns(above[:m.end()])[-1] <= start - line:
         return False
-    if end < line - 1:
+    if blank:
         return True
     # At the marker's own column the line is the `+`'s flush-left block.
     return start - line != lead and bool(_PLUS_LINE.match(above, lead))
