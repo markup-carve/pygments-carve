@@ -41,6 +41,7 @@ def strong(source):
     '  {.x\n  .y}\npara\n',
     '- +\n  {.x\n  .y}\n  para\n',
     '[^a]: +\n{.x\n.y}\npara\n\nx[^a]\n',
+    '{.x\n\n .y}\npara\n',
 ])
 def test_a_continuation_short_of_its_brace_is_paragraph_text(source):
     assert attributes(source) == []
@@ -92,6 +93,7 @@ def test_a_colon_line_outside_a_description_list_hosts_nothing(source):
     ':: t\n\n: +\n{.x}\n```\nx\n\n*b*\n',
     ':: t\n: a\n\n: +\n{.x}\n```\nx\n\n*b*\n',
     ':: t\n  \n: +\n{.x}\n```\nx\n\n*b*\n',
+    ' :: t\n: +\n{.x}\n```\nx\n\n*b*\n',
     ':: t\n\t\n: +\n{.x}\n```\nx\n\n*b*\n',
 ])
 def test_a_description_hosts_a_fence(source):
@@ -138,3 +140,12 @@ def test_the_host_walk_is_linear(unit):
 ])
 def test_where_a_wrapped_block_is_measured(source, attrs):
     assert attributes(source) == attrs
+
+
+def test_a_glued_chain_is_measured_in_linear_time():
+    def cost(blocks):
+        source = '{.a}' * blocks + '{.b\n' + ' ' * (4 * blocks + 1) + '.c}\npara\n'
+        return min(_elapsed(source) for _ in range(3))
+
+    small, large = cost(800), cost(1600)
+    assert large / max(small, 1e-6) < 3, (small, large)

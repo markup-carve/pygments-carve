@@ -129,32 +129,36 @@ def _wraps_past_brace(text, start, end):
     followed by indentation past its block's opening `{` (PART 9 attributes,
     `continuation`): `{.a` + newline + `.b}` is paragraph text."""
     line = text.rfind('\n', 0, start) + 1
-    shift = _columns(text[line:start])[-1] if _closes_item(text, line, start) else 0
-    depth, quote, brace, at = 0, None, 0, start
+    col = _columns(text[line:start])[-1]
+    shift = col if _closes_item(text, line, start) else 0
+    depth, quote, brace, at, lead = 0, None, 0, start, False
     while at < end:
         ch = text[at]
-        if quote:
-            if ch == '\\':
-                at += 1
-            elif ch == quote:
-                quote = None
-        elif ch in '"\'':
-            quote = ch
-        elif ch == '{':
-            if not depth:
-                brace = _columns(text[line:at + 1])[-2] - shift
-                shift = 0
-            depth += 1
-        elif ch == '}':
-            depth -= 1
-        elif ch == '\n':
-            line = at + 1
-            lead = line
-            while lead < end and text[lead] in ' \t':
-                lead += 1
-            if lead == line or text[lead] == '\n' or _columns(text[line:lead])[-1] <= brace:
+        if ch == '\n':
+            if lead:
                 return False
-            at = lead - 1
+            col, lead = 0, True
+        elif lead and ch in ' \t':
+            col = col + 4 - col % 4 if ch == '\t' else col + 1
+        else:
+            if lead:
+                lead = False
+                if col == 0 or col <= brace:
+                    return False
+            if quote:
+                if ch == '\\':
+                    at, col = at + 1, col + 1
+                elif ch == quote:
+                    quote = None
+            elif ch in '"\'':
+                quote = ch
+            elif ch == '{':
+                if not depth:
+                    brace, shift = col - shift, 0
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+            col = col + 4 - col % 4 if ch == '\t' else col + 1
         at += 1
     return True
 
@@ -824,10 +828,11 @@ def _in_deflist(text, start):
             found = memo[start]
             break
         line = text[start:end]
-        if line.startswith(':: '):
+        bare = line.lstrip(' \t')
+        if bare.startswith(':: '):
             found = True
             break
-        if line.strip(' \t') and not line.startswith(': '):
+        if bare and not bare.startswith(': '):
             found = False
             break
         seen.append(start)
