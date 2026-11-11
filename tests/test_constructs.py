@@ -64,6 +64,9 @@ _STALE_TEXT = {
 }
 NOT_COVERED.update({name: 'text since %s (markup-carve/carve-grammars#830)' % why
                     for name, why in _STALE_TEXT.items()})
+NOT_COVERED['an attribute line spans lines'] = (
+    'the sample `{.a` + newline + `.b}` is paragraph text: a continuation line must pass '
+    'the opening `{` (carve corpus 253-...-does-2, carve#5830; markup-carve/carve-grammars#843)')
 
 LEXER = CarveLexer()
 CONSTRUCTS = load_constructs() if inventory.available() else []

@@ -121,7 +121,47 @@ _ATTRS_UNCHECKED = _ATTRS.replace(r'(?!(?<=[{\s])[.#](?!\w[\w-]*[\s}]))', '')
 #:
 #: The inline form deliberately cannot, because an unclosed inline `{` would
 #: otherwise swallow the rest of the document.
-_ATTRS_LINE = _ATTRS.replace(r'[^{}\n', r'[^{}')
+_ATTRS_LINE = _ATTRS.replace(r'[^{}\n', r'[^{}').replace(r'\{(?=', r'\{(?:\n[ \t]+)?(?=', 1)
+
+
+def _wraps_past_brace(text, start, end):
+    """Whether every line break in the attribute run ``text[start:end]`` is
+    followed by indentation past its block's opening `{` (PART 9 attributes,
+    `continuation`): `{.a` + newline + `.b}` is paragraph text."""
+    line = text.rfind('\n', 0, start) + 1
+    col = _columns(text[line:start])[-1]
+    shift = col if _closes_item(text, line, start) else 0
+    depth, quote, brace, at, lead = 0, None, 0, start, False
+    while at < end:
+        ch = text[at]
+        if ch == '\n':
+            if lead:
+                return False
+            col, lead = 0, True
+        elif lead and ch in ' \t':
+            col = col + 4 - col % 4 if ch == '\t' else col + 1
+        else:
+            if lead:
+                lead = False
+                if col == 0 or col <= brace:
+                    return False
+            if quote:
+                if ch == '\\' and at + 1 < end:
+                    at, col, ch = at + 1, col + 1, text[at + 1]
+                elif ch == quote:
+                    quote = None
+            elif ch in '"\'':
+                quote = ch
+            elif ch == '{':
+                if not depth:
+                    brace, shift = col - shift, 0
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+            col = col + 4 - col % 4 if ch == '\t' else col + 1
+        at += 1
+    return True
+
 
 
 def _label(depth=3, inner=r'[^\[\]\\\n]|\\.'):
@@ -239,7 +279,7 @@ _ROW_END = r'[^\n]*\|(?:' + _ATTRS + r')?[ \t]*$'
 _INTERRUPTER = (
     r'(?:#{1,6}[ \t]|`{3,}|~{3,}|:{2,}|>(?=[ \t]|$)|\|(?=[^\n]*\|)|%%'
     r'|\*\[[A-Za-z0-9]+\]: |\[[^\]\n]*\]:'
-    r'|\{(?=[.:}\'"]|\#[\w-]+[\s}]|[A-Za-z][\w-]*(?:[=\s}]|$))'
+    r'|\{(?:\n[ \t]+)?(?=[.:}\'"]|\#[\w-]+[\s}]|[A-Za-z][\w-]*(?:[=\s}]|$))'
     r'|(?:\*[ \t]*){3,}$|(?:-[ \t]*){3,}$|(?:_[ \t]*){3,}$)'
 )
 
@@ -731,31 +771,73 @@ _CROSS_REFERENCE = r'(</)(#[\w-]+)(>)'
 _AUTOLINK = _Scan(r'(<)', r'([a-zA-Z][\w+.-]*:[^>\s]+|[^>\s@]+@[^>\s]+)(>)', r'[>\s]',
                   stop=True)
 
-_ATTRS_ONLY_LINE = re.compile(r'[ \t]*' + _ATTRS + r'[ \t]*$')
+_DEFLIST_TERM = re.compile(r':: +[ \t]*[^ \t\n]')
+_ATTRS_LINE_RUN = re.compile(r'[ \t]*(' + _ATTRS_LINE + r'(?:' + _ATTRS_LINE + r')*)[ \t]*\n')
 _PLUS_LINE = re.compile(
     r'(?:(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')?|>|:|\[\^[^\]\n]+\]:)[ \t]+\+[ \t]*$')
 
 
 def _attached(text, at):
     """Whether the line at ``at`` sits under a `+` marker line, directly or
-    with only one-line attribute lines between (PART 9 §17 L3).
+    with only attribute lines between, wrapped ones included (PART 9 §17 L3).
     Each sits flush left or at the host's content column: a footnote's is two
     past its `[^`, a quote's is never reached by an unmarked line."""
-    end, indents = at - 1, []
+    end = at - 1
     while end >= 0 and text[end] == '\n':
         start = text.rfind('\n', 0, end) + 1
-        if not _ATTRS_ONLY_LINE.match(text, start, end):
-            if not _PLUS_LINE.match(text, start, end):
-                return False
-            line = text[start:end]
-            note = line.find('[^')
-            column = note + 2 if note >= 0 else line.rindex('+')
-            if '>' in line[:column]:
-                column = len(line) + 1
-            return all(i == 0 or i >= column for i in indents)
-        indents.append(len(text[start:end]) - len(text[start:end].lstrip(' \t')))
+        if _PLUS_LINE.match(text, start, end):
+            return _attrs_lines_to(text, start, end + 1, at)
+        lead = text[start:end].lstrip(' \t')
+        if not lead or not (lead[0] == '{' or lead != text[start:end]):
+            return False
         end = start - 1
     return False
+
+
+def _attrs_lines_to(text, host, start, at):
+    """Whether ``text[start:at]`` is attribute lines only, each opener at an
+    indent the `+` host line ``text[host:start]`` admits."""
+    line = text[host:start - 1]
+    if line[0] == ':' and not _in_deflist(text, host):
+        return False
+    note = line.find('[^')
+    column = note + 2 if note >= 0 else line.rindex('+')
+    column = len(line) + 1 if '>' in line[:column] else _columns(line[:column])[-1]
+    while start < at:
+        m = _ATTRS_LINE_RUN.match(text, start, at)
+        if not m or not _wraps_past_brace(text, *m.span(1)):
+            return False
+        indent = _columns(text[start:m.start(1)])[-1]
+        if indent and indent < column:
+            return False
+        start = m.end()
+    return True
+
+
+def _in_deflist(text, start):
+    """Whether the `:` line at ``start`` is a description: the lines above it,
+    blank ones and other descriptions skipped, reach a `::` term. Without one
+    it is a paragraph line."""
+    memo = _indexes(text).setdefault('deflist', {})
+    seen, found = [], None
+    while start:
+        end = start - 1
+        start = text.rfind('\n', 0, end) + 1
+        if start in memo:
+            found = memo[start]
+            break
+        line = text[start:end]
+        bare = line.lstrip(' \t')
+        if _DEFLIST_TERM.match(bare):
+            found = True
+            break
+        if bare and not bare.startswith(': '):
+            found = False
+            break
+        seen.append(start)
+    for at in seen:
+        memo[at] = bool(found)
+    return bool(found)
 
 
 class _AttachedFence(_Scan):
@@ -782,6 +864,55 @@ class _AttachedFenceMatcher:
                 and _attached(text, pos):
             return self.forced(text, pos)
         return self.full(text, pos)
+
+
+def _closes_item(text, line, start):
+    """Whether the indented line at ``line`` stops short of the content column
+    of the item marker line above it, after a blank or under a `+`: the run then
+    starts at the root, and the spec model and the engines measure its `{` as
+    if flush left. Directly under item text the line is lazy text instead."""
+    if start == line:
+        return False
+    end, blank = line - 1, False
+    while end > 0:
+        above = text[text.rfind('\n', 0, end) + 1:end]
+        if above.strip(' \t'):
+            break
+        end, blank = end - len(above) - 1, True
+    else:
+        return False
+    lead = len(above) - len(above.lstrip(' '))
+    m = _BLOCK_OPENER.match(above, lead)
+    indent = _columns(text[line:start])[-1]
+    if not (m and m.group('item')) or _columns(above[:m.end()])[-1] <= indent:
+        return False
+    if blank:
+        return True
+    # At the marker's own column the line is the `+`'s flush-left block.
+    return indent != lead and bool(_PLUS_LINE.match(above, lead))
+
+
+class _AttrsLine(_Scan):
+    """The standalone attribute line rule, with its wrapped lines checked."""
+
+    def __init__(self, pattern):
+        super().__init__(pattern, '', ())
+
+    def matcher(self, flags):
+        return _AttrsLineMatcher(self.pattern, flags)
+
+
+class _AttrsLineMatcher:
+
+    def __init__(self, pattern, flags):
+        self.pattern = pattern
+        self.full = re.compile(pattern, flags).match
+
+    def match(self, text, pos=0):
+        m = self.full(text, pos)
+        if m and '\n' in m.group(2) and not _wraps_past_brace(text, *m.span(2)):
+            return None
+        return m
 
 
 #: A fallback opener line is paragraph text, its run a code span (carve#4807).
@@ -1907,7 +2038,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
              bygroups(Text, Punctuation.Table, Operator.Table.Alignment), 'tablerow'),
 
             # A standalone attribute block, which may span lines.
-            (r'^(' + _MARGIN + r')(' + _ATTRS_LINE + r')', bygroups(Text, Name.Attribute)),
+            (_AttrsLine(r'^(' + _MARGIN + r')((?:' + _ATTRS_LINE + r')+)'), bygroups(Text, Name.Attribute)),
 
             # A paragraph. Its later lines are not tried as list items or
             # captions, which do not interrupt one: the engine renders `para`,
