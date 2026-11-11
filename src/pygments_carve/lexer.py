@@ -1680,25 +1680,28 @@ def _escaped(text, at):
 
 _QUOTE_PREFIX = re.compile(r'[ \t]*((?:>[ \t]*)*)')
 _HEADING_START = re.compile(r'#{1,6}(?:[ \t]|$)')
-_ITEM_START = re.compile(r'(?:[-*+]|' + _ORDERED + r')[ \t]')
-_FENCE_START = re.compile(r'(`{3,}|~{3,})')
+_ITEM_START = re.compile(r'(?:[-*.]|' + _ORDERED + r')[ \t]|\[\^[^\]\n]+\]: ')
+#: A line that is a block of its own, or a fence line: a break, a div fence, an
+#: attribute line, a table row, or a code or comment fence.
+_OWN_BLOCK = re.compile(r'(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$|:{3,}|\|(?=.*\|)'
+                        r'|`{3,}|~{3,}|%{3,}|(?:' + _ATTRS_LINE + r')+[ \t]*$')
 
 
 def _paragraph_spans(text):
     """The `(start, end)` of every paragraph, in document order.
 
     An approximation of the engine's block reading, enough to scope a bracket:
-    a blank line, a heading, a fence or a deeper quote ends a paragraph; a line
-    with fewer quote markers continues it lazily; a list marker continues it
-    unless the paragraph is itself list or indented content, since a marker
-    does not interrupt a top-level paragraph.
+    a blank line, a heading, an `_OWN_BLOCK` line or a deeper quote ends a
+    paragraph, and a footnote definition starts one. A line with fewer quote
+    markers continues it lazily; a list marker continues it unless the
+    paragraph is itself list or indented content, since a marker does not
+    interrupt a top-level paragraph.
     """
     spans = []
     current = None
     depth = 0
     plain = False
     after_heading = False
-    fence = None
     start = 0
     while start <= len(text):
         end = text.find('\n', start)
@@ -1707,18 +1710,15 @@ def _paragraph_spans(text):
         prefix = _QUOTE_PREFIX.match(line)
         rest = line[prefix.end():]
         quotes = prefix.group(1).count('>')
-        opened = _FENCE_START.match(rest)
-        if fence is not None:
-            if opened and opened.group(1)[0] == fence[0] and len(opened.group(1)) >= len(fence):
-                fence = None
-        elif opened or not rest.strip():
-            if opened:
-                fence = opened.group(1)
+        if not rest.strip() or _OWN_BLOCK.match(rest):
+            if rest.startswith('|'):
+                spans.append((start, end))
             current = None
         else:
             heading = _HEADING_START.match(rest) is not None
-            item = _ITEM_START.match(rest) is not None
-            if (current is not None and not after_heading and not heading
+            item = _ITEM_START.match(rest)
+            note = item is not None and item.group().startswith('[')
+            if (current is not None and not after_heading and not heading and not note
                     and quotes <= depth and (plain or not item)):
                 spans[current] = (spans[current][0], end)
             else:

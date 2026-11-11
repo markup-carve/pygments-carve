@@ -70,9 +70,16 @@ def test_the_reproduction_of_143_is_text():
     '```\n[a\n```\nb]{.x} c\n',
     '^[a](u){.x} c\n',
     ':r[a b](u){.x} c\n',
+    '[a\n---\nb]{.x}\n',
+    '[a\n%%%\nz\n%%%\nb]{.x}\n',
+    '[a\n::: d\nb]{.x}\n',
+    '[a\n| t |\nb]{.x}\n',
+    '[a\n{.y}\nb]{.x}\n',
+    '[a\n[^m]: d\nb]{.x}\n',
+    '- [a\n. b]{.x}\n',
 ])
 def test_a_closer_with_no_open_span_takes_no_block(source):
-    assert attributes(source) == []
+    assert '{.x}' not in attributes(source)
 
 
 @pytest.mark.parametrize('source', [
@@ -84,6 +91,13 @@ def test_a_closer_with_no_open_span_takes_no_block(source):
     '[a [b\n- b]{.x} c\n',
     '^[a\nb]{.x} c\n',
     '\\^[a](u){.x} c\n',
+    '[a\n%% c\nb]{.x}\n',
+    '[a\n--\nb]{.x}\n',
+    '[a\n. b]{.x}\n',
+    '[a\n+ b\nb]{.x}\n',
+    '- [a\n+ b\nb]{.x}\n',
+    '[a\n[r]: /u\nb]{.x}\n',
+    '| [a]{.x} |\n',
 ])
 def test_a_span_opened_earlier_in_the_paragraph_takes_its_block(source):
     assert attributes(source) == ['{.x}']
