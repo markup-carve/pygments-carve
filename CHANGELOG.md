@@ -6,10 +6,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-11-11
+
+The lexer follows the Carve 0.1.14 readings.
+
+### Fixes
+
+- Front matter opens without a closer lookahead and runs to the end of the
+  document when no closer follows (#132).
+- `->`, `<-`, `<->`, `(c)` and `(r)` are text, and an arrow needs its exact
+  hyphen run (#132).
+- A mention or tag name needs an ASCII letter, a letter or roman dot marker
+  needs two spaces, and a definition term is one line (#132).
+- A column-0 code fence opens without a closer lookahead and keeps its
+  language when invalid metadata follows it (#133).
+- A bare span holding its own delimiter between word characters forms no
+  span, so `/usr/local/` and `_my_var_` stay text, and a highlight never
+  opens on `=>` (#133).
+- An abbreviation definition behind a container marker is a definition, and
+  marker-line `%%%` comment fences and braced comment runs follow the column
+  rules (#133).
+
 ### Improvements
 
 - Table markers and captions have token subtypes for separate coloring while
-  retaining the colors of existing Pygments styles.
+  retaining the colors of existing Pygments styles (#130).
+- Braced cell alignment (`|={>}`, `|{> .x}`, `|{?v}`) is table alignment; the
+  deprecated glued prefixes stay highlighted (#132).
+
+**Full Changelog**: https://github.com/markup-carve/pygments-carve/compare/0.1.4...0.1.5
 
 ## [0.1.4] - 2026-10-26
 
