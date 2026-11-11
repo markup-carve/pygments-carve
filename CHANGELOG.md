@@ -26,6 +26,10 @@ The lexer follows the Carve 0.1.14 readings.
 - An abbreviation definition behind a container marker is a definition, and
   marker-line `%%%` comment fences and braced comment runs follow the column
   rules (#133).
+- A `%%%` comment fence on a footnote or description marker line is paired,
+  a fence under a marker-line `+` and its attribute lines stays attached, and
+  a fallback fence line that closes its own code span no longer masks later
+  emphasis (#138).
 - A wrapped block attribute line counts only when its continuation is
   indented past the opening brace (#141).
 - An inline attribute block is colored only after an element it attaches to
