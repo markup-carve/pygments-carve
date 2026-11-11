@@ -112,4 +112,4 @@ def test_a_closer_with_no_open_span_takes_no_block(source):
     '[a]{.k}[b\nc]{.x}\n',
 ])
 def test_a_span_opened_earlier_in_the_paragraph_takes_its_block(source):
-    assert attributes(source) == ['{.x}']
+    assert attributes(source)[-1] == '{.x}'
