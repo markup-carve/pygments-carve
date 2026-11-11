@@ -68,6 +68,14 @@ NOT_COVERED['an attribute line spans lines'] = (
     'the sample `{.a` + newline + `.b}` is paragraph text: a continuation line must pass '
     'the opening `{` (carve corpus 253-...-does-2, carve#5830; markup-carve/carve-grammars#843)')
 
+_TEXT_SHAPES = {
+    'footnote ref': '`text[^1] end` has no `[^1]:` definition',
+    'closing bracket with earlier line opener': 'the `]` of `x]{.c}` closes no span',
+    'link destination with earlier line text': 'the `]` of `x](u){.c}` closes no span',
+}
+NOT_COVERED.update({name: 'text in carve-js: %s (markup-carve/carve-grammars#848)' % why
+                    for name, why in _TEXT_SHAPES.items()})
+
 LEXER = CarveLexer()
 CONSTRUCTS = load_constructs() if inventory.available() else []
 
