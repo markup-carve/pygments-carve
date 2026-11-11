@@ -538,7 +538,7 @@ GUARDS = [
           [], [(Punctuation, '___ ')]),
     Guard('a footnote definition needs content', 16, r'(?![ \t]*$)', 0,
           '[^a]: \n',
-          [(Punctuation, '[^'), (Name.Label, 'a'), (Punctuation, ']')],
+          [],
           [(Punctuation, '[^'), (Name.Label, 'a'), (Punctuation, ']:')]),
     # markup-carve/pygments-carve#134: the marker-line comment fence takes it.
     Guard('a footnote definition leaves a comment fence', 16, '(?! *%%%)', 0,

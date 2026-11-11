@@ -1678,45 +1678,127 @@ def _escaped(text, at):
     return run % 2 == 1
 
 
-def _bracket_closers(text, start):
-    """Which `]` and `)` on the line at `start` may take an attribute block.
+_QUOTE_PREFIX = re.compile(r'[ \t]*((?:>[ \t]*)*)')
+_HEADING_START = re.compile(r'#{1,6}(?:[ \t]|$)')
+_ITEM_START = re.compile(r'(?:[-*+]|' + _ORDERED + r')[ \t]')
+_FENCE_START = re.compile(r'(`{3,}|~{3,})')
+
+
+def _paragraph_spans(text):
+    """The `(start, end)` of every paragraph, in document order.
+
+    An approximation of the engine's block reading, enough to scope a bracket:
+    a blank line, a heading, a fence or a deeper quote ends a paragraph; a line
+    with fewer quote markers continues it lazily; a list marker continues it
+    unless the paragraph is itself list or indented content, since a marker
+    does not interrupt a top-level paragraph.
+    """
+    spans = []
+    current = None
+    depth = 0
+    plain = False
+    after_heading = False
+    fence = None
+    start = 0
+    while start <= len(text):
+        end = text.find('\n', start)
+        end = len(text) if end < 0 else end
+        line = text[start:end]
+        prefix = _QUOTE_PREFIX.match(line)
+        rest = line[prefix.end():]
+        quotes = prefix.group(1).count('>')
+        opened = _FENCE_START.match(rest)
+        if fence is not None:
+            if opened and opened.group(1)[0] == fence[0] and len(opened.group(1)) >= len(fence):
+                fence = None
+        elif opened or not rest.strip():
+            if opened:
+                fence = opened.group(1)
+            current = None
+        else:
+            heading = _HEADING_START.match(rest) is not None
+            item = _ITEM_START.match(rest) is not None
+            if (current is not None and not after_heading and not heading
+                    and quotes <= depth and (plain or not item)):
+                spans[current] = (spans[current][0], end)
+            else:
+                current = len(spans)
+                spans.append((start, end))
+                depth = quotes
+                plain = not item and (quotes > 0 or line[:1] not in ' \t')
+            after_heading = heading
+        start = end + 1
+    return spans
+
+
+#: The prefix of an inline footnote or a `:name[...]` extension, whose `]` no
+#: link destination follows.
+_NOT_A_LINK = re.compile(r'(?<!\\)(?:\\\\)*(?:\^|:[a-zA-Z][\w-]*)\Z')
+
+
+def _code_spans(text, start, end):
+    """Each code span opener between `start` and `end`, mapped to its end."""
+    runs = [m for m in re.finditer(r'`+', text[start:end]) if not _escaped(text, start + m.start())]
+    spans = {}
+    later = {}
+    for m in reversed(runs):
+        size = m.end() - m.start()
+        if size in later:
+            spans[start + m.start()] = later[size]
+        later[size] = start + m.end()
+    skips = {}
+    reach = start
+    for m in runs:
+        at = start + m.start()
+        if at >= reach and at in spans:
+            skips[at] = reach = spans[at]
+    return skips
+
+
+def _bracket_closers(text, start, end):
+    """Which `]` and `)` between `start` and `end` may take an attribute block.
 
     Only a span, link or image closer takes one. A `]` closes the nearest open
-    unescaped `[`; with none open it attaches unless an escaped `\\[` stands
-    unclosed before it, since a span may have opened on an earlier line. A `)`
-    must close a link destination, so its `(` follows such a `]`. One forward
-    pass, so a line costs linear time however many blocks it holds.
+    unescaped `[` of its paragraph outside code spans, which may sit on an
+    earlier line; a `]` that closes none is text. A `)` must close a link
+    destination on its own line, so its `(` follows such a `]` that closes no
+    inline footnote or extension. Linear in the paragraph however many blocks it holds.
     """
-    end = text.find('\n', start)
-    end = len(text) if end < 0 else end
     closers = {}
     brackets = []
     parens = []
-    escaped_opener = False
-    for i in range(start, end):
+    notes = set()
+    line = start
+    skips = _code_spans(text, start, end)
+    i = start
+    while i < end:
         c = text[i]
-        if c not in '[]()':
+        if i in skips:
+            i = skips[i]
             continue
-        if _escaped(text, i):
-            if c == '[' and not brackets:
-                escaped_opener = True
+        i += 1
+        if c == '\n':
+            parens = []
+            line = i
+            continue
+        if c not in '[]()' or _escaped(text, i - 1):
             continue
         if c == '[':
-            brackets.append(i)
+            brackets.append(i - 1)
         elif c == ']':
+            closers[i - 1] = bool(brackets)
+            if brackets and _NOT_A_LINK.search(text, max(start, brackets[-1] - 64), brackets[-1]):
+                notes.add(i - 1)
             if brackets:
                 brackets.pop()
-                closers[i] = True
-            else:
-                closers[i] = not escaped_opener
-                escaped_opener = False
         elif c == '(':
-            parens.append(i)
+            parens.append(i - 1)
         elif parens:
             o = parens.pop()
-            closers[i] = o > start and closers.get(o - 1, False) and text[o - 1] == ']'
+            closers[i - 1] = (o > line and closers.get(o - 1, False) and text[o - 1] == ']'
+                              and o - 1 not in notes)
         else:
-            closers[i] = False
+            closers[i - 1] = False
     return closers
 
 
@@ -1770,12 +1852,41 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
         self.handlecodeblocks = get_bool_opt(options, 'handlecodeblocks', True)
 
     def get_tokens_unprocessed(self, text, stack=('root',)):
+        tokens = self._attach_attributes(text, stack)
+        if tuple(stack) != ('root',):
+            yield from tokens
+            return
+        # A footnote reference with no definition in the document is text, and
+        # so is an attribute block glued to it (`08-attributes.ebnf`). Only the
+        # whole document shows the definitions, so sub-lexed runs skip this.
+        tokens = list(tokens)
+        defined = {' '.join(tokens[n + 1][2].split()) for n in range(len(tokens) - 2)
+                   if tokens[n][1] is Punctuation and tokens[n][2] == '[^'
+                   and tokens[n + 1][1] is Name.Label
+                   and tokens[n + 2][1] is Punctuation and tokens[n + 2][2] == ']:'}
+        glued = -1
+        for n, (index, token, value) in enumerate(tokens):
+            if (token is Punctuation and value == '[^' and n + 2 < len(tokens)
+                    and tokens[n + 1][1] is Name.Label
+                    and tokens[n + 2][1] is Punctuation and tokens[n + 2][2] == ']'
+                    and ' '.join(tokens[n + 1][2].split()) not in defined):
+                glued = tokens[n + 2][0] + 1
+                tokens[n + 1] = (tokens[n + 1][0], Text, tokens[n + 1][2])
+                tokens[n + 2] = (tokens[n + 2][0], Text, tokens[n + 2][2])
+                token = Text
+            elif token is Name.Attribute and index == glued and value.startswith('{'):
+                glued = index + len(value)
+                token = Text
+            yield index, token, value
+
+    def _attach_attributes(self, text, stack):
         # The inline attribute rule matches `{...}` anywhere; after plain
         # brackets such as `(a){.c}` or `\[x]{.c}` the engine keeps it as text.
         # It attaches only to the element right before it (`08-attributes.ebnf`):
         # after a space, a word or the line start the braces are text.
         start = end = -1
         closers = {}
+        paragraphs = None
         previous = None
         run_end = -1
         for index, token, value in super().get_tokens_unprocessed(text, stack):
@@ -1789,10 +1900,11 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
                     run_end = run.end(1) if run else -1
                 elif before in ')]':
                     if not start <= index - 1 < end:
-                        start = text.rfind('\n', 0, index) + 1
-                        end = text.find('\n', index)
-                        end = len(text) if end < 0 else end
-                        closers = _bracket_closers(text, start)
+                        if paragraphs is None:
+                            paragraphs = _paragraph_spans(text)
+                        at = bisect.bisect_right(paragraphs, (index, len(text) + 1)) - 1
+                        start, end = paragraphs[at] if at >= 0 else (index - 1, index)
+                        closers = _bracket_closers(text, start, end)
                     attached = closers.get(index - 1, False)
                 else:
                     attached = (any(previous in end for end in _ELEMENT_ENDS)
