@@ -1763,14 +1763,36 @@ def _code_spans(text, start, end):
     return skips
 
 
+_AUTOLINK_SPAN = re.compile(r'[A-Za-z][\w+.-]*:[^\s<>]*>')
+
+
+def _paren_pairs(text, start, end):
+    """Each unescaped `(` between `start` and `end` mapped to the `)` closing it on its line."""
+    pairs = {}
+    opened = []
+    for m in re.finditer(r'[()\n]', text[start:end]):
+        at = start + m.start()
+        c = m.group()
+        if c == '\n':
+            opened = []
+        elif _escaped(text, at):
+            continue
+        elif c == '(':
+            opened.append(at)
+        elif opened:
+            pairs[opened.pop()] = at
+    return pairs
+
+
 def _bracket_closers(text, start, end):
     """Which `]` and `)` between `start` and `end` may take an attribute block.
 
     Only a span, link or image closer takes one. A `]` closes the nearest open
-    unescaped `[` of its paragraph outside code spans, which may sit on an
-    earlier line; a `]` that closes none is text. A `)` must close a link
-    destination on its own line, so its `(` follows such a `]` that closes no
-    inline footnote or extension. Linear in the paragraph however many blocks it holds.
+    unescaped `[` of its paragraph, which may sit on an earlier line; a `]`
+    that closes none is text. A `)` must close a link destination on its own
+    line, so its `(` follows such a `]` that closes no inline footnote or
+    extension. Code spans, comments, destinations and autolinks are opaque.
+    Linear in the paragraph however many blocks it holds.
     """
     closers = {}
     brackets = []
@@ -1778,6 +1800,8 @@ def _bracket_closers(text, start, end):
     notes = set()
     line = start
     skips = _code_spans(text, start, end)
+    destinations = _paren_pairs(text, start, end)
+    comment_end = -1
     i = start
     while i < end:
         c = text[i]
@@ -1789,8 +1813,32 @@ def _bracket_closers(text, start, end):
             parens = []
             line = i
             continue
-        if c not in '[]()' or _escaped(text, i - 1):
+        if c not in '[]()%{<' or _escaped(text, i - 1):
             continue
+        if c == '%':
+            if text.startswith('%', i):
+                i = text.find('\n', i)
+                i = end if i < 0 or i > end else i
+            continue
+        if c == '{':
+            if text.startswith('%', i):
+                if comment_end < i:
+                    comment_end = text.find('%}', i + 1, end)
+                    comment_end = end if comment_end < 0 else comment_end + 2
+                if comment_end < end:
+                    i = comment_end
+            continue
+        if c == '<':
+            link = _AUTOLINK_SPAN.match(text, i, end)
+            if link:
+                i = link.end()
+            continue
+        if c == '(' and closers.get(i - 2) and text[i - 2] == ']' and i - 2 not in notes:
+            close = destinations.get(i - 1)
+            if close is not None:
+                closers[close] = True
+                i = close + 1
+                continue
         if c == '[':
             brackets.append(i - 1)
         elif c == ']':
