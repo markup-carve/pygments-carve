@@ -238,8 +238,8 @@ PINS = [
         [(Operator.Table.Header, '|='), (Punctuation.Table, '|'), (Punctuation.Table, '|')]),
     Pin('table row', '| a | b |\n',
         [(Punctuation.Table, '|'), (Punctuation.Table, '|'), (Punctuation.Table, '|')]),
-    Pin('standalone attribute block', '{.a\n.b}\n',
-        [(Name.Attribute, '{.a\n.b}')],
+    Pin('standalone attribute block', '{.a\n .b}\n',
+        [(Name.Attribute, '{.a\n .b}')],
         note='It spans lines, which is what tells it from the inline form; a '
              'one-line block reads the same either way.'),
     Pin('paragraph', 'para\n- not a list\n', [],
