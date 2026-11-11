@@ -902,9 +902,11 @@ def _closes_item(text, line, start):
 
 #: Container markers, each followed by its space, then a list marker glued to
 #: what follows it.
-_PREFIX_MARKERS = re.compile(r'[ \t]*(?:(?:>|[-*+]|\d+[.)]|\[[ xX]\])[ \t]+)*')
-_GLUED_MARKER = re.compile(r'(?:[-*+]|\d+[.)])')
-_MARKER_ATTRS_RUN = re.compile(r'(?:' + _ATTRS + r')+(?=[ \t\n]|\Z)')
+_PREFIX_MARKERS = re.compile(r'[ \t]*(?:(?:>|[-*+]|' + _ORDERED + r'|\[[ xX]\])[ \t]+)*')
+_GLUED_MARKER = re.compile(r'(?:[-*+]|' + _ORDERED + r')')
+_MARKER_ATTRS_RUN = re.compile(r'(?:' + _ATTRS + r')+(?=[ \t]+[^ \t\n])')
+#: A sub-lexed marker line ends at the end of its text, not at a newline.
+_MARKER_ATTRS_LINE = re.compile(r'[ \t]*(' + _ATTRS_LINE + r'(?:' + _ATTRS_LINE + r')*)[ \t]*(?:\n|\Z)')
 
 
 def _marker_attrs(text, index):
@@ -916,7 +918,7 @@ def _marker_attrs(text, index):
     start = text.rfind('\n', 0, index) + 1
     prefix = _PREFIX_MARKERS.match(text, start)
     if prefix.end() == index:
-        return index > start and _ATTRS_LINE_RUN.match(text, index) is not None
+        return _MARKER_ATTRS_LINE.match(text, index) is not None
     glued = _GLUED_MARKER.match(text, prefix.end())
     return (glued is not None and glued.end() == index
             and _MARKER_ATTRS_RUN.match(text, index) is not None)
@@ -1783,7 +1785,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
                     attached = True
                 elif _marker_attrs(text, index):
                     attached = True
-                    run = _ATTRS_LINE_RUN.match(text, index)
+                    run = _MARKER_ATTRS_LINE.match(text, index)
                     run_end = run.end(1) if run else -1
                 elif before in ')]':
                     if not start <= index - 1 < end:

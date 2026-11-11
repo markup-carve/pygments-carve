@@ -39,6 +39,9 @@ def attributes(source):
     'a\\\\{.x}\n',
     '@cite{.x}\n',
     '- 1.{k=v}a\n',
+    '- [ ] 1.{ .x}\nnext\n',
+    '> > {.x} a\n',
+    'i) {.x} a\n',
 ])
 def test_an_attribute_block_with_no_element_before_it_is_text(source):
     assert attributes(source) == []
@@ -70,6 +73,13 @@ def test_an_attribute_block_after_an_element_is_an_attribute(source, expect):
     ('1. {.p}{.q}\nnext\n', ['{.p}', '{.q}']),
     ('- [ ] {.x}\nnext\n', ['{.x}']),
     ('- [ ] 1.{.x} a\n', ['{.x}']),
+    ('> {.x}', ['{.x}']),
+    ('1. {.x}', ['{.x}']),
+    ('> > {.x}\nnext\n', ['{.x}']),
+    ('- > {.x}\nnext\n', ['{.x}']),
+    ('> > {.p}{.q .r}\n', ['{.p}', '{.q .r}']),
+    ('i) {.x}\nnext\n', ['{.x}']),
+    ('A.  {.x}\nnext\n', ['{.x}']),
 ])
 def test_an_attribute_line_still_attaches_to_its_block(source, expect):
     assert attributes(source) == expect
