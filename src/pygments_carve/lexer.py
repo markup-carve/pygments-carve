@@ -771,6 +771,7 @@ _CROSS_REFERENCE = r'(</)(#[\w-]+)(>)'
 _AUTOLINK = _Scan(r'(<)', r'([a-zA-Z][\w+.-]*:[^>\s]+|[^>\s@]+@[^>\s]+)(>)', r'[>\s]',
                   stop=True)
 
+_DEFLIST_TERM = re.compile(r':: +[ \t]*[^ \t\n]')
 _ATTRS_LINE_RUN = re.compile(r'[ \t]*(' + _ATTRS_LINE + r'(?:' + _ATTRS_LINE + r')*)[ \t]*\n')
 _PLUS_LINE = re.compile(
     r'(?:(?:[-*]|' + _ORDERED + r'|\.)(?:' + _ATTRS + r')?|>|:|\[\^[^\]\n]+\]:)[ \t]+\+[ \t]*$')
@@ -801,18 +802,16 @@ def _attrs_lines_to(text, host, start, at):
         return False
     note = line.find('[^')
     column = note + 2 if note >= 0 else line.rindex('+')
-    if '>' in line[:column]:
-        column = len(line) + 1
+    column = len(line) + 1 if '>' in line[:column] else _columns(line[:column])[-1]
     while start < at:
         m = _ATTRS_LINE_RUN.match(text, start, at)
         if not m or not _wraps_past_brace(text, *m.span(1)):
             return False
-        indent = m.start(1) - start
+        indent = _columns(text[start:m.start(1)])[-1]
         if indent and indent < column:
             return False
         start = m.end()
     return True
-
 
 
 def _in_deflist(text, start):
@@ -829,7 +828,7 @@ def _in_deflist(text, start):
             break
         line = text[start:end]
         bare = line.lstrip(' \t')
-        if bare.startswith(':: '):
+        if _DEFLIST_TERM.match(bare):
             found = True
             break
         if bare and not bare.startswith(': '):

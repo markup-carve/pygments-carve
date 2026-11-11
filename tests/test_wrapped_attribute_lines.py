@@ -72,10 +72,13 @@ def test_the_reproduction():
     assert body(source) == 'x\n\n*b*\n'
 
 
-@pytest.mark.parametrize('host', ['- +', '1. +', '[^a]: +', ':: t\n: +'])
-def test_a_wrapped_attribute_line_keeps_a_fence_attached(host):
+@pytest.mark.parametrize('host, indent', [
+    ('- +', ''), ('1. +', ''), ('[^a]: +', ''), (':: t\n: +', ''),
+    ('- +', '\t'), ('1. +', '\t'),
+])
+def test_a_wrapped_attribute_line_keeps_a_fence_attached(host, indent):
     """The fence under it ends at its first blank (carve#5304)."""
-    source = host + '\n{.x\n .y}\n```\nx\n\n*b*\n'
+    source = host + '\n' + indent + '{.x\n' + indent + ' .y}\n```\nx\n\n*b*\n'
     assert body(source) == 'x\n'
     assert strong(source) == ['b']
 
@@ -84,6 +87,7 @@ def test_a_wrapped_attribute_line_keeps_a_fence_attached(host):
     ': +\n{.x}\n```\nx\n\n*b*\n',
     't\n: +\n{.x\n .y}\n```\nx\n\n*b*\n',
     ':: t\nmore\n: +\n{.x}\n```\nx\n\n*b*\n',
+    ':: \n: +\n{.x\n .y}\n```\nx\n\n*b*\n',
 ])
 def test_a_colon_line_outside_a_description_list_hosts_nothing(source):
     assert body(source) == 'x\n\n*b*\n'
