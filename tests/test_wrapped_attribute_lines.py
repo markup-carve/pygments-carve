@@ -133,6 +133,8 @@ def test_the_host_walk_is_linear(unit):
     ('- a\n {.x\n .y}\npara\n', []),
     ('  - +\n  {.x\n  .y}\npara\n', []),
     ('- a\n\n  {.x\n .y}\npara\n', []),
+    ('- a\n\n\t{.x\n\t.y}\npara\n', []),
+    ('1. +\n\t{.x\n\t.y}\npara\n', []),
 ])
 def test_where_a_wrapped_block_is_measured(source, attrs):
     assert attributes(source) == attrs

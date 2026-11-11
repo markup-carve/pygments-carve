@@ -879,12 +879,13 @@ def _closes_item(text, line, start):
         return False
     lead = len(above) - len(above.lstrip(' '))
     m = _BLOCK_OPENER.match(above, lead)
-    if not (m and m.group('item')) or _columns(above[:m.end()])[-1] <= start - line:
+    indent = _columns(text[line:start])[-1]
+    if not (m and m.group('item')) or _columns(above[:m.end()])[-1] <= indent:
         return False
     if blank:
         return True
     # At the marker's own column the line is the `+`'s flush-left block.
-    return start - line != lead and bool(_PLUS_LINE.match(above, lead))
+    return indent != lead and bool(_PLUS_LINE.match(above, lead))
 
 
 class _AttrsLine(_Scan):
