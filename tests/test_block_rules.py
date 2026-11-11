@@ -481,19 +481,12 @@ GUARDS = [
            (Comment.Special, 't: x\n--- junk\n')],
           [(Punctuation, '---'), (Keyword.Type, 'yaml'),
            (Comment.Special, 't: x\n'), (Punctuation, '---')]),
-    # The blank-line guard changes no token at all; what it changes is the cost.
-    # `test_the_blank_line_guard_is_what_bounds_the_closer_search` is its pin.
+    # A mid-document `\ufeff%%%` opens nothing, so the last `%%%` is an opener
+    # with no closer (carve#4907).
     Guard('a comment fence skips a byte order mark only at offset 0', 1, r'\A', 0,
           'p\n\n\ufeff%%%\nhidden\n%%%\n',
-          [(Comment.Preproc, '%%'), (Comment, '%'), (Comment.Preproc, '%%'), (Comment, '%')],
+          [(Comment.Preproc, '%%'), (Comment, '%'), (Comment.Preproc, '%%%')],
           [(Comment.Preproc, '%%%'), (Comment, 'hidden\n'), (Comment.Preproc, '%%%')]),
-    Guard('a blank line inside a comment fence is not tried twice', 1, r'(?!\2)', 0),
-    Guard('a wider run does not close a narrower comment fence', 1, '(?!%)', 0,
-          '%%%\nhidden\n%%%%\n',
-          [(Comment.Preproc, '%%'), (Comment, '%'),
-           (Comment.Preproc, '%%'), (Comment, '%%')],
-          [(Comment.Preproc, '%%%'), (Comment, 'hidden\n'),
-           (Comment.Preproc, '%%%'), (Comment, '%')]),
     Guard('a raw fence skips a byte order mark only at offset 0', 3, r'\A', 0,
           'p\n\n\ufeff```=html\nx\n```\n',
           [(Punctuation, '```'), (String.Backtick, '=html\nx'), (Punctuation, '```')],
@@ -702,26 +695,16 @@ def _elapsed(lexer, source, repeats=3):
     return min(once() for _ in range(repeats))
 
 
-def test_the_blank_line_guard_is_what_keeps_the_fence_search_cheap():
-    """The one guard whose removal changes the cost rather than the tokens.
+def test_an_unclosed_comment_fence_over_blank_lines_stays_linear():
+    """An unclosed `%%%` reads every later line once.
 
-    Without `(?!\\2)` both alternatives of the body match a whitespace-only line
-    whenever the opener sits at column 0, so an opener with no closer backtracks
-    exponentially - the lexer's own comment records 22 such lines at 0.8s, each
-    further line doubling it. The tokens are identical either way, so no pin on
-    a reading can see this.
-
-    The assertion is the RATIO across a fixed pair of sizes, not a stopwatch
-    reading: absolute times on a machine carrying other load measure the load.
-    The guarded lexer is measured on 2000 and 4000 lines, best of five: at 12
-    and 20 lines it took microseconds, which is timer noise, and the pin failed
-    on a loaded machine with nothing wrong. Doubling must stay under x3, the
-    linear threshold the fence closer search uses, on one of three attempts; an
-    exponential search does not finish 2000 lines at all. The unguarded lexer is measured where it can
-    still finish: eight more blank lines cost it 180x.
+    The fence used to be one regex whose two body alternatives both matched a
+    whitespace-only line, which backtracked exponentially until `(?!\\2)`
+    separated them. `_CommentFence` walks the lines instead. The assertion is
+    the RATIO across 2000 and 4000 lines, best of five, not a stopwatch reading:
+    doubling must stay under x3, the linear threshold the fence closer search
+    uses, on one of three attempts.
     """
-    unguarded = build_verbatim(without_clause(SOURCE, 1, r'(?!\2)', 0, BLOCK))
-
     def blanks(n):
         return '%%%\n' + ' \n' * n
 
@@ -729,21 +712,13 @@ def test_the_blank_line_guard_is_what_keeps_the_fence_search_cheap():
         return (_elapsed(lexer, blanks(large), repeats)
                 / max(_elapsed(lexer, blanks(small), repeats), 1e-9))
 
-    # Measured again before it fails, as tests/test_inline_timing.py does: a
-    # linear search is under x3 on most runs, an exponential one on none.
     for _ in range(3):
         guarded_ratio = ratio(LEXER, 2000, 4000, 5)
         if guarded_ratio < 3:
             break
     assert guarded_ratio < 3, (
         'doubling the whitespace-only lines under an unclosed comment fence '
-        'multiplied the time by %.2f, which is the growth the guard exists to '
-        'stop.' % guarded_ratio)
-    unguarded_ratio = ratio(unguarded, 12, 20, 3)
-    assert unguarded_ratio > 8, (
-        'without the guard the same eight lines are expected to be far more '
-        'than eight times the work (measured 180x); they were %.2fx, so this '
-        'pin is measuring something else.' % unguarded_ratio)
+        'multiplied the time by %.2f.' % guarded_ratio)
 
 
 # ----------------------------------------------------------------------------

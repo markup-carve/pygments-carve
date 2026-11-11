@@ -34,8 +34,9 @@ _DEFINITION = re.compile(
     r'^[ \t]*((?:' + _MARKER + r'[ \t]+)*)(\[\^|\*\[|\[)(?!@)([^\[\]\n]+)(\]:)( )(\S)'
 )
 
-#: A fence opener or closer. A definition inside one is payload, not markup.
-_FENCE = re.compile(r'^[ \t]*(`{3,}|~{3,}|%{3,})')
+#: A fence opener or closer, quoted or not. A definition inside one is
+#: payload, not markup (corpus 347: `> %%%` hides `> [r]: /url`).
+_FENCE = re.compile(r'^[ \t]*(?:> ?[ \t]*)*(`{3,}|~{3,}|%{3,})')
 
 #: Opener -> the token VALUE the lexer must emit for the label of that kind.
 KINDS = {

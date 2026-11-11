@@ -179,7 +179,9 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
     payload line. The marker-line comment fence and the braced comment column
     rule then take ten documents from the regression rule: 155 and 147. The
     same fence on a footnote's or a description's marker line
-    (pygments-carve#134) takes seven more: 148 and 140.
+    (pygments-carve#134) takes seven more: 148 and 140. An unclosed fence
+    opening and every marker-line fence pairing (pygments-carve#146, #147) take
+    seventy more: 78 and 70.
 
     The ticket counted 32, comparing against the SOURCE rather than against what
     Pygments hands the rules. The 32nd is `250-line-endings-and-a-byte-order-
@@ -194,8 +196,8 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         _regression_source()
         .replace("options.setdefault('stripnl', False)", "options.setdefault('stripnl', True)")
         .replace("options.setdefault('ensurenl', False)", "options.setdefault('ensurenl', True)"))
-    assert count(both) == 148, count(both)
-    assert count(REGRESSION) == 140, count(REGRESSION)
+    assert count(both) == 78, count(both)
+    assert count(REGRESSION) == 70, count(REGRESSION)
     assert count(DEFAULTS) == 8, count(DEFAULTS)
     assert count(LEXER) == 0, count(LEXER)
 
