@@ -274,6 +274,11 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
     entries leave, and `01-emphasis-6` (carve#4836), `704-*`, `737-*-3`
     (`=>` never opens), `776-*-2` and `925-unicode-*` join. The guarded
     lexer reports zero on every one of them.
+
+    Five join when the autolink body takes only the characters the spec admits
+    (pygments-carve#149): `36-autolinks-2`, `36-autolinks-3` and three
+    `272-*` entries hold a `<...>` run the corpus renders as text, which the
+    looser rule had read as an autolink.
     """
     hits = sorted(p.stem for p in DOCUMENTS
                   if _case(p)[1] is not None
@@ -293,8 +298,13 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         '20-smart-typography-arrows-and-symbols',
         '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters-1'
         '0',
+        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters-4',
         '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters-5',
+        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters-6',
         '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters-7',
+        '272-an-autolink-body-admits-non-ascii-and-excludes-format-characters-8',
+        '36-autolinks-2',
+        '36-autolinks-3',
         '465-an-underscore-pair-in-text-is-escaped-where-the-line-would-pair-it',
         '467-a-bare-closer-does-not-reach-inside-a-link-destination',
         '467-a-bare-closer-does-not-reach-inside-a-link-destination-2',
