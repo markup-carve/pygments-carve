@@ -100,7 +100,7 @@ _CELL_ALIGN_ONLY = (r'(?:(?<=\|)|(?<=\|=))(\{)(' + _TABLE_ALIGN + r')( *)(\})')
 #: `[x]{key=a"b}` as text, and a `"` both alternatives could take made an
 #: unclosed run of quotes exponential (30 quotes, 2s, x2.6 per two more).
 _ATTRS = (
-    r'\{(?=[.:}\'"]|\#[\w-]+[\s}]|[A-Za-z][\w-]*(?:[=\s}]|$))(?:'
+    r'\{(?= *(?:[.:}\'"]|\#[\w-]+[\s}]|[A-Za-z][\w-]*(?:[=\s}]|$)))(?:'
     r'"(?:[^"\\\n]|\\.)*"'
     r"|'(?:[^'\\\n]|\\.)*'"
     r'|\{[^{}\n]*\}'
@@ -279,12 +279,13 @@ _ROW_END = r'[^\n]*\|(?:' + _ATTRS + r')?[ \t]*$'
 _INTERRUPTER = (
     r'(?:#{1,6}[ \t]|`{3,}|~{3,}|:{2,}|>(?=[ \t]|$)|\|(?=[^\n]*\|)|%%'
     r'|\*\[[A-Za-z0-9]+\]: |\[[^\]\n]*\]:'
-    r'|\{(?:\n[ \t]+)?(?=[.:}\'"]|\#[\w-]+[\s}]|[A-Za-z][\w-]*(?:[=\s}]|$))'
+    r'|(?:' + _ATTRS_LINE + r')+[ \t]*$'
     r'|(?:\*[ \t]*){3,}$|(?:-[ \t]*){3,}$|(?:_[ \t]*){3,}$)'
 )
 
 #: A newline that ends a paragraph: a blank line or an interrupting line follows.
 _PARAGRAPH_BREAK = r'(?=[ \t]*(?:\n|\Z)|[ \t]*' + _INTERRUPTER + r')'
+
 
 
 #: Where a top-level paragraph starts: a line with content at the start of the
@@ -761,6 +762,13 @@ _IMAGE = _Scan(r'(!' + _LABEL + r')(\()', r'([^)\n]*)(\))', r'\)', stop=True)
 _IMAGE_REF = r'(!' + _LABEL + r')(' + _LABEL + r')'
 _LINK = _Scan(r'(' + _LABEL + r')(\()', r'([^)\n]*)(\))', r'\)', stop=True)
 _LINK_REF = r'(' + _LABEL + r')(' + _LABEL + r')'
+#: An inline attribute block until `get_tokens_unprocessed` has seen what
+#: precedes it; never emitted.
+_INLINE_ATTRS = Name.Attribute.Inline
+#: Token types an element can end with: a closing delimiter, a reference label,
+#: a shortcode, an image, or an attribute block glued to one of those.
+_ELEMENT_ENDS = (Punctuation, Name.Entity, Name.Label, Name.Constant, Name.Attribute,
+                 String.Other)
 _LINK_ATTRS = r'(' + _LABEL + r')(?=' + _ATTRS + r')'
 #: A reference whose text or label crosses a line stays verbatim, interior and
 #: all (CARVE-P3-004): `[*x*` / `y][]` keeps its asterisks. A line break inside
@@ -890,6 +898,30 @@ def _closes_item(text, line, start):
         return True
     # At the marker's own column the line is the `+`'s flush-left block.
     return indent != lead and bool(_PLUS_LINE.match(above, lead))
+
+
+#: Container markers, each followed by its space, then a list marker glued to
+#: what follows it.
+_PREFIX_MARKERS = re.compile(r'[ \t]*(?:(?:>|[-*+]|' + _ORDERED + r'|\[[ xX]\])[ \t]+)*')
+_GLUED_MARKER = re.compile(r'(?:[-*+]|' + _ORDERED + r')')
+_MARKER_ATTRS_RUN = re.compile(r'(?:' + _ATTRS + r')+(?=[ \t]+[^ \t\n])')
+#: A sub-lexed marker line ends at the end of its text, not at a newline.
+_MARKER_ATTRS_LINE = re.compile(r'[ \t]*(' + _ATTRS_LINE + r'(?:' + _ATTRS_LINE + r')*)[ \t]*(?:\n|\Z)')
+
+
+def _marker_attrs(text, index):
+    """Whether the block at `index` belongs to the container markers before it.
+
+    That is the attribute line of a marker line (`> {.x}`, `1. {.x}{.y}`), or
+    a list marker's own block glued to it (`- 1.{.x} a`).
+    """
+    start = text.rfind('\n', 0, index) + 1
+    prefix = _PREFIX_MARKERS.match(text, start)
+    if prefix.end() == index:
+        return _MARKER_ATTRS_LINE.match(text, index) is not None
+    glued = _GLUED_MARKER.match(text, prefix.end())
+    return (glued is not None and glued.end() == index
+            and _MARKER_ATTRS_RUN.match(text, index) is not None)
 
 
 class _AttrsLine(_Scan):
@@ -1740,18 +1772,33 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
     def get_tokens_unprocessed(self, text, stack=('root',)):
         # The inline attribute rule matches `{...}` anywhere; after plain
         # brackets such as `(a){.c}` or `\[x]{.c}` the engine keeps it as text.
+        # It attaches only to the element right before it (`08-attributes.ebnf`):
+        # after a space, a word or the line start the braces are text.
         start = end = -1
         closers = {}
+        previous = None
+        run_end = -1
         for index, token, value in super().get_tokens_unprocessed(text, stack):
-            if (token is Name.Attribute and index and value.startswith('{')
-                    and text[index - 1] in ')]'):
-                if not start <= index - 1 < end:
-                    start = text.rfind('\n', 0, index) + 1
-                    end = text.find('\n', index)
-                    end = len(text) if end < 0 else end
-                    closers = _bracket_closers(text, start)
-                if not closers.get(index - 1, False):
-                    token = Text
+            if token is _INLINE_ATTRS:
+                before = text[index - 1] if index else '\n'
+                if index < run_end:
+                    attached = True
+                elif _marker_attrs(text, index):
+                    attached = True
+                    run = _MARKER_ATTRS_LINE.match(text, index)
+                    run_end = run.end(1) if run else -1
+                elif before in ')]':
+                    if not start <= index - 1 < end:
+                        start = text.rfind('\n', 0, index) + 1
+                        end = text.find('\n', index)
+                        end = len(text) if end < 0 else end
+                        closers = _bracket_closers(text, start)
+                    attached = closers.get(index - 1, False)
+                else:
+                    attached = (any(previous in end for end in _ELEMENT_ENDS)
+                                and not before.isspace())
+                token = Name.Attribute if attached else Text
+            previous = token
             yield index, token, value
 
     tokens = {
@@ -2038,7 +2085,8 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
              bygroups(Text, Punctuation.Table, Operator.Table.Alignment), 'tablerow'),
 
             # A standalone attribute block, which may span lines.
-            (_AttrsLine(r'^(' + _MARGIN + r')((?:' + _ATTRS_LINE + r')+)'), bygroups(Text, Name.Attribute)),
+            (_AttrsLine(r'^(' + _MARGIN + r')((?:' + _ATTRS_LINE + r')+)(?=[ \t]*(?:\n|\Z))'),
+             bygroups(Text, Name.Attribute)),
 
             # A paragraph. Its later lines are not tried as list items or
             # captions, which do not interrupt one: the engine renders `para`,
@@ -2408,7 +2456,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
             (r'(?<![\w:]):[\w+-]+:(?![\w:])', Name.Constant),
 
             # An attribute block attached to the construct before it.
-            (_ATTRS, Name.Attribute),
+            (_ATTRS, _INLINE_ATTRS),
 
             # Bare emphasis delimiters, each carrying the word-boundary guards
             # the grammar states for it. "No bare delimiter emphasizes
