@@ -115,6 +115,8 @@ def test_a_closer_with_no_open_span_takes_no_block(source):
     '[a\n|x| foo\nb]{.x}\n',
     ':: t\n: [a\n  b]{.x}\n',
     '[a\n: d\nb]{.x}\n',
+    '[a\n#\nb]{.x}\n',
+    '[a\n# \nb]{.x}\n',
 ])
 def test_a_span_opened_earlier_in_the_paragraph_takes_its_block(source):
     assert attributes(source)[-1] == '{.x}'

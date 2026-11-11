@@ -1680,7 +1680,7 @@ def _escaped(text, at):
 
 _QUOTE_PREFIX = re.compile(r'[ \t]*((?:>[ \t]*)*)')
 #: A one-line block that holds inline text: a heading or a definition term.
-_HEADING_START = re.compile(r'#{1,6}(?:[ \t]|$)|::[ \t]')
+_HEADING_START = re.compile(r'#{1,6}[ \t]+[^ \t\n]|::[ \t]')
 _ITEM_START = re.compile(r'(?:[-*.]|' + _ORDERED + r')[ \t]|\[\^[^\]\n]+\]: ')
 #: A line that is a block of its own, or a fence line: a break, a div fence, an
 #: attribute line, a table row, or a code or comment fence.
