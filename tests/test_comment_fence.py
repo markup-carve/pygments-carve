@@ -8,10 +8,9 @@ reads DEFINITIONS out of the corpus and none of the eight holds one, and because
 the construct sweep runs an inventory that names no unterminated-fence
 construct.
 
-THE RULE. An opener with no matching closer ahead "does NOT open a block. The
-line degrades to a `comment_line`", and PART 0's layout automaton says the same
-from the layout side: "an opener without an exact-width closer is one `%%` line
-comment; later lines are classified normally."
+THE RULE. An opener opens without looking for a closer; with none, the span
+ends at a line that misses its owner or at the end of its host (carve#4907,
+corpus 167). It hides what the corpus hides, no more.
 
 WHAT IS MEASURED HERE, IN TWO INSTRUMENTS.
 
@@ -90,12 +89,12 @@ PINS = [
         '%%% html\nsecret\n%%% end\nafter\n', 'CCC._', FENCE_RULE),
     Pin('a wider fence holds a shorter run',
         '%%%%\nhidden %%% inner\n%%%%\nafter\n', 'CCC._', FENCE_RULE),
-    Pin('unterminated at column 0 is the line form',
-        'before\n\n%%%\nsecret\n\nafter\n', '._C._._', LINE_RULE),
-    Pin('unterminated at an item content column is the line form',
-        '- x\n  %%%\ny\n', '.C._', LINE_RULE),
+    Pin('unterminated at column 0 hides the rest of the document',
+        'before\n\n%%%\nsecret\n\nafter\n', '._CC_C_', FENCE_RULE),
+    Pin('unterminated at an item content column ends at the dedent',
+        '- x\n  %%%\ny\n', '.C._', FENCE_RULE),
     Pin('a closer past a dedent is not this fence closer',
-        '- x\n  %%%\ny\n  %%%\nz\n', '.C.C._', LINE_RULE),
+        '- x\n  %%%\ny\n  %%%\nz\n', '.C.CC_', FENCE_RULE),
     Pin('a wider line does not close a narrower opener',
         '- x\n  %%%\n  %%%%\nz\n', '.CC._', LINE_RULE),
 ]
@@ -206,8 +205,8 @@ def test_the_pins_catch_the_regression_they_were_written_for():
               if commentlines.classify(REGRESSION, p.source) != p.lines]
     assert broken == [
         'closer carries an insignificant tail',
-        'unterminated at column 0 is the line form',
-        'unterminated at an item content column is the line form',
+        'unterminated at column 0 hides the rest of the document',
+        'unterminated at an item content column ends at the dedent',
         'a closer past a dedent is not this fence closer',
     ], broken
 
@@ -340,7 +339,7 @@ def test_an_unterminated_fence_over_blank_lines_stays_linear():
     start = time.perf_counter()
     tokens = list(LEXER.get_tokens('%%%\n' + ' \n' * 40 + 'after\n'))
     assert time.perf_counter() - start < 5
-    assert (Comment.Preproc, '%%') in [(t, v) for t, v in tokens]
+    assert (Comment.Preproc, '%%%') in [(t, v) for t, v in tokens]
 
 
 # ----------------------------------------------------------------------------

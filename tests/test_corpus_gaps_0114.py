@@ -144,7 +144,7 @@ def test_an_abbreviation_is_defined_behind_a_marker(marker):
 
 # corpus 337, 864, carve#4907
 @pytest.mark.parametrize('source, hidden, shown', [
-    ('. - %%%\n%%%\nx *b*\n%%%\n', '%', ['b']),
+    ('. - %%%\n%%%\nx *b*\n%%%\n', '', ['b']),
     ('- %%%\n  [r]: /url\n  %%%\n\n[r][]', '  [r]: /url\n', []),
     ('- %%%\n  h\nx *b*\n', '  h\n', ['b']),
     ('- %%%%\n  %%%\n  %%%%\n*b*', '  %%%\n', ['b']),
