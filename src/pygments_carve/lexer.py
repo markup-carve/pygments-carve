@@ -1679,7 +1679,8 @@ def _escaped(text, at):
 
 
 _QUOTE_PREFIX = re.compile(r'[ \t]*((?:>[ \t]*)*)')
-_HEADING_START = re.compile(r'#{1,6}(?:[ \t]|$)')
+#: A one-line block that holds inline text: a heading or a definition term.
+_HEADING_START = re.compile(r'#{1,6}(?:[ \t]|$)|::[ \t]')
 _ITEM_START = re.compile(r'(?:[-*.]|' + _ORDERED + r')[ \t]|\[\^[^\]\n]+\]: ')
 #: A line that is a block of its own, or a fence line: a break, a div fence, an
 #: attribute line, a table row, or a code or comment fence.
@@ -1691,7 +1692,7 @@ def _paragraph_spans(text):
     """The `(start, end)` of every paragraph, in document order.
 
     An approximation of the engine's block reading, enough to scope a bracket:
-    a blank line, a heading, an `_OWN_BLOCK` line or a deeper quote ends a
+    a blank line, a heading or term, an `_OWN_BLOCK` line or a deeper quote ends a
     paragraph, and a footnote definition starts one. A line with fewer quote
     markers continues it lazily; a list marker continues it unless the
     paragraph is itself list or indented content, since a marker does not
