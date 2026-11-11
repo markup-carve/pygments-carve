@@ -19,7 +19,7 @@ def autolinks(source):
 
 @pytest.mark.parametrize('body', [
     'ab@c.d', 'a.b+c_d-e@f-g.h.ij', 'mailto:a@b', 'http://a.b/c?d=e#f',
-    'http://a[b]', 'x:y', 'https://eé.com/',
+    'http://a[b]', 'x:y', 'https://e\u00e9.com/',
 ])
 def test_an_autolink(body):
     assert autolinks('w <%s> w\n' % body) == [body]
@@ -31,7 +31,8 @@ def test_an_autolink(body):
     'x@y:z',
     # url_char excludes these, and format characters
     'http://a"b', 'http://a{b', 'http://a}b', 'http://a|b', 'http://a^b',
-    'http://a`b', 'http://a\\b', 'https://e​.com/', 'https://e﻿.com/',
+    'http://a`b', 'http://a\\b', 'https://e\u200b.com/', 'https://e\ufeff.com/',
+    'https://e\u0890.com/', 'https://e\U000110bd.com/',
 ])
 def test_not_an_autolink(body):
     assert autolinks('w <%s> w\n' % body) == []

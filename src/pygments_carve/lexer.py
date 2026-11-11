@@ -779,8 +779,12 @@ _CROSS_REFERENCE = r'(</)(#[\w-]+)(>)'
 #: An autolink body (06-inline-links-images.ebnf): a URL of `url_char`s, which
 #: excludes `"`, `\`, a backtick, `{`, `}`, `|`, `^`, controls and format
 #: characters, or an email address that ends in a dot and letters.
-_URL_CHAR = (r'[^\s<>"\\`{}|^\x00-\x1f\x7f-\x9f\u00ad\u0600-\u0605\u061c\u06dd\u070f'
-             r'\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb]')
+_URL_CHAR = (r'[^\s<>"\\`{}|^\x00-\x1f\x7f-\x9f'
+             # General_Category Cf, Unicode 16.0
+             r'\u00ad\u0600-\u0605\u061c\u06dd\u070f\u0890-\u0891\u08e2\u180e\u200b-\u200f'
+             r'\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb\U000110bd\U000110cd'
+             r'\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0001'
+             r'\U000e0020-\U000e007f]')
 _AUTOLINK_BODY = (r'[a-zA-Z][a-zA-Z0-9+.-]*:' + _URL_CHAR + r'+'
                   r'|[A-Za-z0-9._+-]+@[A-Za-z0-9._+-]+\.[A-Za-z]+')
 _AUTOLINK = _Scan(r'(<)', r'(' + _AUTOLINK_BODY + r')(>)', r'[>\s]', stop=True)
