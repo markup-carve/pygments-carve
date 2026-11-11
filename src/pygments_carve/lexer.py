@@ -708,6 +708,18 @@ def _line_prefix(text, at, stop):
         return depth, p - at, base, _column(text, at, p)
 
 
+def _quote_marker(text, at, stop, depth):
+    """The offset of the line's quote marker after its first ``depth``."""
+    p = at
+    while True:
+        while p < stop and text[p] in ' \t':
+            p += 1
+        if depth == 0:
+            return p
+        depth -= 1
+        p += 1
+
+
 def _fence_depth(prefix):
     """How many quote markers an opener's marker run holds."""
     return len(re.findall(r'(?<![^ \t])>(?= |$)', prefix))
@@ -758,7 +770,16 @@ def _owner_column(text, line, column, depth, base):
         if found == depth and at + width < stop:
             colon = _COLON_LINE.match(text, at + width, stop)
         path.append((key, None if colon is None else colon.group(1) is not None))
-        if found > depth or at + width == stop:
+        if found > depth:
+            # A deeper quote is a block of its own: left of the limit it has
+            # ended the containers the limit stands for.
+            marker = _column(text, at, _quote_marker(text, at, stop, depth))
+            if marker <= base:
+                result = (base, None)
+            elif marker < limit:
+                limit = marker
+            continue
+        if at + width == stop:
             continue
         if found < depth:
             result = (base, None)
@@ -783,13 +804,21 @@ def _owner_column(text, line, column, depth, base):
     return owner, verse
 
 
+def _paragraph_line(text, at, stop):
+    """Whether the line holds text that no block opener claims."""
+    width = _line_prefix(text, at, stop)[1]
+    return (at + width < stop and not _HEADING_START.match(text, at + width, stop)
+            and not _OWN_BLOCK.match(text, at + width, stop))
+
+
 def _lazy(text, at):
-    """Whether the line at ``at`` may continue a paragraph above it: the line
-    above holds text and is no comment fence's."""
+    """Whether the line at ``at`` may continue a paragraph above it: both
+    lines are paragraph text, and the one above is no comment fence's."""
     if at == 0:
         return False
     start = text.rfind('\n', 0, at - 1) + 1
-    if not text[start:at - 1].strip(' \t>'):
+    if not (_paragraph_line(text, at, _line_end(text, at))
+            and _paragraph_line(text, start, at - 1)):
         return False
     begins, ends = _indexes(text).get('comment-fences', ((), ()))
     i = bisect.bisect_right(begins, start) - 1

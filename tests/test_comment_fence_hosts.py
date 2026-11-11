@@ -44,6 +44,12 @@ def shown(source):
     ('- > %%%\n\n  > w\n', ['-', '>', '>', 'w']),
     # The owner is found however far above the opener its marker line is.
     ('- i\n' + '  x\n' * 100 + '  %%%\n  s\nout\n', ['-', 'i'] + ['x'] * 100 + ['out']),
+    # A block opener after an item is no lazy line: the item has ended.
+    ('- item\n# heading\n  %%%\n  hidden\nvisible\n', ['-', 'item', '#', 'heading']),
+    ('- a\n| t |\n  %%%\n  s\nv\n', ['-', 'a', '|', 't', '|']),
+    ('- a\n> q\n  %%%\n  s\nv\n', ['-', 'a', '>', 'q']),
+    # A caption line folds into the paragraph above it.
+    ('1. a\n^ c\n   %%%\n   s\nv\n', ['1.', 'a', '^', 'c', 'v']),
     # An indented `%%%` in a line block is verse (CARVE-P9-044).
     ('::: |\n    %%%\n  x\n    %%%\n:::\n', [':::', '|', 'x', ':::']),
 ])
