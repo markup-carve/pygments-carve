@@ -1763,6 +1763,7 @@ def _code_spans(text, start, end):
     return skips
 
 
+_ATTRS_BLOCK = re.compile(_ATTRS)
 _AUTOLINK_SPAN = re.compile(r'[A-Za-z][\w+.-]*:[^\s<>]*>')
 
 
@@ -1791,7 +1792,8 @@ def _bracket_closers(text, start, end):
     unescaped `[` of its paragraph, which may sit on an earlier line; a `]`
     that closes none is text. A `)` must close a link destination on its own
     line, so its `(` follows such a `]` that closes no inline footnote or
-    extension. Code spans, comments, destinations and autolinks are opaque.
+    extension. Code spans, comments, destinations, autolinks and attribute
+    blocks are opaque.
     Linear in the paragraph however many blocks it holds.
     """
     closers = {}
@@ -1821,7 +1823,10 @@ def _bracket_closers(text, start, end):
                 i = end if i < 0 or i > end else i
             continue
         if c == '{':
-            if text.startswith('%', i):
+            block = _ATTRS_BLOCK.match(text, i - 1, end)
+            if block:
+                i = block.end()
+            elif text.startswith('%', i):
                 if comment_end < i:
                     comment_end = text.find('%}', i + 1, end)
                     comment_end = end if comment_end < 0 else comment_end + 2
@@ -1909,7 +1914,7 @@ class CarveLexer(RegexLexer, metaclass=_ScanMeta):
 
     def get_tokens_unprocessed(self, text, stack=('root',)):
         tokens = self._attach_attributes(text, stack)
-        if tuple(stack) != ('root',):
+        if tuple(stack) != ('root',) or '[^' not in text:
             yield from tokens
             return
         # A footnote reference with no definition in the document is text, and
