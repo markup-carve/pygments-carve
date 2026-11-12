@@ -256,6 +256,8 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     25 of them, because the current rules read those documents and the
     regression rule no longer reaches them: 44. The same fence on a footnote's
     or a description's marker line (pygments-carve#134) takes ten more: 34.
+    The spec 0.1.14 release (carve 51c56315) adds four new documents, three
+    `1067-*` and `984-*`: 38.
     """
     hits = []
     for path in DOCUMENTS:
@@ -266,6 +268,10 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
                                html.read_text(encoding='utf-8')):
             hits.append(path.name)
     assert sorted(hits) == sorted([
+        '1067-a-comment-fence-line-inside-a-braced-comment-run-is-run-text.crv',
+        '1067-a-comment-fence-line-inside-a-braced-comment-run-is-run-text-2.crv',
+        '1067-a-comment-fence-line-inside-a-braced-comment-run-is-run-text-3.crv',
+        '984-a-shallower-line-ends-a-descendant-comment-span-and-opens-a-paragraph.crv',
         '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-5.cr'
         'v',
         '443-an-unterminated-comment-fence-in-a-list-item-is-the-line-form-6.cr'

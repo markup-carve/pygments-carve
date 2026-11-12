@@ -323,10 +323,13 @@ def test_the_corpus_gate_reports_the_documents_the_ticket_was_filed_on():
     invalid metadata still opens - and pairs 78 more bodies: 293. It sees an
     attribute line between a `+` and its fence (pygments-carve#135), so
     `782-*-13` holds no body that runs to the end: 292.
+
+    The spec 0.1.14 release (carve 51c56315) adds thirteen, all new documents:
+    305. No document already in the corpus changed its verdict.
     """
     hits = [p.name for p in DOCUMENTS
             if _non_verbatim(REGRESSION, p.read_text(encoding='utf-8'))]
-    assert len(hits) == 292, len(hits)
+    assert len(hits) == 305, len(hits)
 
 
 # ----------------------------------------------------------------------------
@@ -414,12 +417,27 @@ def test_a_paired_body_is_one_the_engine_renders():
     sees the column-0 closer below it open an empty fence. `782-*-13` left
     with pygments-carve#135: the reader and the lexer now see an attribute
     line between the `+` and the fence it attaches.
+
+    The spec 0.1.14 release (carve 51c56315) adds eight new own-line `+` and
+    nested-fence documents (`1015-*` to `1045-*`), and three `279-*` whose
+    corpus rows changed join. `650-*-3` leaves; its row changed too.
     """
     unconfirmed = sorted({path.stem for path, source, html in _documents_with_html()
                           for body in fencebodies.bodies(source)
                           if fencebodies.confirmed(source, html, body) is False})
     assert unconfirmed == [
+        '1015-an-own-line-plus-note-fence-keeps-its-trailing-blank',
+        '1016-a-description-s-own-line-plus-fence-keeps-its-trailing-blank',
+        '1016-a-description-s-own-line-plus-fence-keeps-its-trailing-blank-2',
+        '1025-an-item-own-line-plus-fence-keeps-its-trailing-blank',
+        '1028-an-own-line-plus-fence-keeps-a-quote-blank',
+        '1031-an-own-line-plus-fence-ends-before-a-shifted-run',
+        '1035-an-own-line-item-fence-ends-in-a-note',
+        '1045-a-nested-code-body-keeps-its-literal-content-after-frame-stripping',
         '276-a-fence-opened-on-a-list-marker-line-body-below-the-content-column-7',
+        '279-a-boundary-line-inside-an-open-fence-does-not-end-the-container-2',
+        '279-a-boundary-line-inside-an-open-fence-does-not-end-the-container-3',
+        '279-a-boundary-line-inside-an-open-fence-does-not-end-the-container-7',
         '325-an-attribute-line-after-a-continuation-marker-attributes-the-attached-block-8',
         '476-an-item-s-fence-is-read-once-whatever-block-it-follows',
         '476-an-item-s-fence-is-read-once-whatever-block-it-follows-2',
@@ -444,7 +462,6 @@ def test_a_paired_body_is_one_the_engine_renders():
         '617-csv-and-tsv-table-bodies-8',
         '617-csv-and-tsv-table-bodies-9',
         '637-definition-body-note-and-fence-owner-boundaries-5',
-        '650-a-wrapped-attribute-line-interrupts-like-a-one-line-attribute-line-3',
         '678-a-below-column-fence-stays-in-a-definition-paragraph',
         '782-a-first-block-plus-hands-its-block-to-the-host-as-the-host-reads-it-11',
         '851-a-first-block-plus-shape-reads-the-one-attach-rule-2',
