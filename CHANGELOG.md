@@ -6,10 +6,50 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-11-12
+
+The lexer follows the Carve 0.1.14 readings.
+
+### Fixes
+
+- Front matter opens without a closer lookahead and runs to the end of the
+  document when no closer follows (#132).
+- `->`, `<-`, `<->`, `(c)` and `(r)` are text, and an arrow needs its exact
+  hyphen run (#132).
+- A mention or tag name needs an ASCII letter, a letter or roman dot marker
+  needs two spaces, and a definition term is one line (#132).
+- A column-0 code fence opens without a closer lookahead and keeps its
+  language when invalid metadata follows it (#133).
+- A bare span holding its own delimiter between word characters forms no
+  span, so `/usr/local/` and `_my_var_` stay text, and a highlight never
+  opens on `=>` (#133).
+- An abbreviation definition behind a container marker is a definition, and
+  marker-line `%%%` comment fences and braced comment runs follow the column
+  rules (#133).
+- A `%%%` comment fence on a footnote or description marker line is paired,
+  a fence under a marker-line `+` and its attribute lines stays attached, and
+  a fallback fence line that closes its own code span no longer masks later
+  emphasis (#138).
+- A wrapped block attribute line counts only when its continuation is
+  indented past the opening brace (#141).
+- An inline attribute block is colored only after an element it attaches to
+  (#145): a footnote reference the document defines, or a bracket span opened
+  earlier in the same paragraph (#148).
+- A `%%%` comment fence with no closer hides the rest of its host, and a fence
+  in a quote or on a task item's or quoted item's marker line is paired (#150).
+- An autolink body takes only the characters the spec admits, so an address
+  holding a bracket or a URL holding a brace is text (#151).
+- A multi-line braced comment run opened on a lazy line of an item, quote or
+  footnote paragraph is text, so its content stays visible (#153).
+
 ### Improvements
 
 - Table markers and captions have token subtypes for separate coloring while
-  retaining the colors of existing Pygments styles.
+  retaining the colors of existing Pygments styles (#130).
+- Braced cell alignment (`|={>}`, `|{> .x}`, `|{?v}`) is table alignment; the
+  deprecated glued prefixes stay highlighted (#132).
+
+**Full Changelog**: https://github.com/markup-carve/pygments-carve/compare/0.1.4...0.1.5
 
 ## [0.1.4] - 2026-10-26
 
