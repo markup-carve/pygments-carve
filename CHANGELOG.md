@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.1.5] - 2026-11-11
+## [0.1.5] - 2026-11-12
 
 The lexer follows the Carve 0.1.14 readings.
 
@@ -39,6 +39,8 @@ The lexer follows the Carve 0.1.14 readings.
   in a quote or on a task item's or quoted item's marker line is paired (#150).
 - An autolink body takes only the characters the spec admits, so an address
   holding a bracket or a URL holding a brace is text (#151).
+- A multi-line braced comment run opened on a lazy line of an item, quote or
+  footnote paragraph is text, so its content stays visible (#153).
 
 ### Improvements
 
