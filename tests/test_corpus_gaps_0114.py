@@ -181,6 +181,8 @@ def test_a_braced_comment_in_block_position_continues_past_its_brace(source, com
     ('- a\n  - b\n    {% c\n     d %}\n', True),
     ('- pre\n{% b %}\n', True),
     ('- pre\n\n{% b\n b %}\n', True),
+    ('- # H\n{% b\n b %}\n', True),
+    ('- ```\n  x\n  ```\n{% b\n b %}\n', True),
 ])
 def test_a_multi_line_braced_comment_on_a_lazy_line_is_text(source, comment):
     assert any(t is Comment.Preproc and v == '{%' for t, v in tokens(source)) is comment

@@ -480,6 +480,18 @@ def _lazy_opener(text, line, start):
     return found < above[0] or (found == above[0] and _column(text, line, start) < above[1])
 
 
+def _past_markers(text, at, stop):
+    """The offset of the first content character after the line's markers."""
+    while (found := _LIST_MARKER.match(text, at, stop)) is not None:
+        at = found.end()
+    found = _HOST_MARKER.match(text, at, stop)
+    if found:
+        at = found.end()
+    while at < stop and text[at] in ' \t':
+        at += 1
+    return at
+
+
 def _open_paragraph(text, line):
     """``(depth, column)`` of the container whose paragraph is still open on
     the line before ``line``, or None. Memoized per line, so a run of openers
@@ -500,11 +512,12 @@ def _open_paragraph(text, line):
             result = (at, None)
             break
         columns = _content_columns(text, body, stop, at)
+        content = _past_markers(text, body, stop) if columns else body
+        if content == stop or _OWN_BLOCK.match(text, content, stop) or _HEADING_START.match(text, content, stop):
+            result = (at, None)
+            break
         if columns:
             result = (at, (found, columns[-1]))
-            break
-        if _OWN_BLOCK.match(text, body, stop) or _HEADING_START.match(text, body, stop):
-            result = (at, None)
             break
         path.append((at, found, base, indent, stop))
     value = None if result is None else result[1]
