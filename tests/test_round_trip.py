@@ -182,6 +182,8 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
     (pygments-carve#134) takes seven more: 148 and 140. An unclosed fence
     opening and every marker-line fence pairing (pygments-carve#146, #147) take
     seventy more: 78 and 70.
+    The spec 0.1.14 release (carve 51c56315) adds one new document to the rule's
+    share, `983-*-4`: 79 and 71.
 
     The ticket counted 32, comparing against the SOURCE rather than against what
     Pygments hands the rules. The 32nd is `250-line-endings-and-a-byte-order-
@@ -196,8 +198,8 @@ def test_the_gate_reports_the_documents_the_ticket_was_filed_on():
         _regression_source()
         .replace("options.setdefault('stripnl', False)", "options.setdefault('stripnl', True)")
         .replace("options.setdefault('ensurenl', False)", "options.setdefault('ensurenl', True)"))
-    assert count(both) == 78, count(both)
-    assert count(REGRESSION) == 70, count(REGRESSION)
+    assert count(both) == 79, count(both)
+    assert count(REGRESSION) == 71, count(REGRESSION)
     assert count(DEFAULTS) == 8, count(DEFAULTS)
     assert count(LEXER) == 0, count(LEXER)
 

@@ -457,6 +457,8 @@ def _continues_past(text, start, end):
         return True
     column = start - line
     at = text.find('\n', start, end)
+    if at != -1 and _lazy_opener(text, line, start):
+        return False
     while at != -1:
         nxt = text.find('\n', at + 1, end)
         stop = end if nxt == -1 else nxt
@@ -465,6 +467,54 @@ def _continues_past(text, start, end):
             return False
         at = nxt
     return True
+
+
+def _lazy_opener(text, line, start):
+    """Whether the line at ``line`` misses the body column of the paragraph
+    open above it: a multi-line brace run opened there takes no lazy
+    continuation (01-layout S4, carve#5830)."""
+    above = _open_paragraph(text, line)
+    if above is None:
+        return False
+    found, _, _, _ = _line_prefix(text, line, start)
+    return found < above[0] or (found == above[0] and _column(text, line, start) < above[1])
+
+
+def _open_paragraph(text, line):
+    """``(depth, column)`` of the container whose paragraph is still open on
+    the line before ``line``, or None. Memoized per line, so a run of openers
+    down one paragraph stays linear."""
+    memo = _indexes(text).setdefault('open-paragraph', {})
+    path, at, result = [], line, None
+    while True:
+        if at == 0:
+            break
+        stop = at - 1
+        at = text.rfind('\n', 0, stop) + 1
+        if at in memo:
+            result = (at, memo[at])
+            break
+        found, width, base, indent = _line_prefix(text, at, stop)
+        body = at + width
+        if body == stop or text[body:stop].strip() == '':
+            result = (at, None)
+            break
+        columns = _content_columns(text, body, stop, at)
+        if columns:
+            result = (at, (found, columns[-1]))
+            break
+        if _OWN_BLOCK.match(text, body, stop) or _HEADING_START.match(text, body, stop):
+            result = (at, None)
+            break
+        path.append((at, found, base, indent, stop))
+    value = None if result is None else result[1]
+    if result is not None:
+        memo[result[0]] = value
+    for at, found, base, indent, stop in reversed(path):
+        if value is None or found > value[0]:
+            value = (found, _owner_column(text, at, indent, found, base)[0])
+        memo[at] = value
+    return value
 
 
 _QUOTE_PREFIX = re.compile(r'[ \t]*(?:>[ \t]*)*')

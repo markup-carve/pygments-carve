@@ -166,3 +166,21 @@ def test_a_marker_line_comment_fence(source, hidden, shown):
 ])
 def test_a_braced_comment_in_block_position_continues_past_its_brace(source, comment):
     assert any(t is Comment.Preproc and v == '{%' for t, v in tokens(source)) is comment
+
+
+# 01-layout S4, carve#5830: a multi-line run on a lazy line takes no lazy continuation.
+@pytest.mark.parametrize('source, comment', [
+    ('- pre\n{% b\n b %}\n', False),
+    ('> pre\n{% b\n b %}\n', False),
+    ('[^a]: pre\n{% b\n b %}\n\nref[^a]\n', False),
+    ('- a\n  - b\n{% c\n  d %}\n  - c\n', False),
+    ('- a\n  - b\n  {% c\n   d %}\n', False),
+    ('- a\n  more\n{% b\n b %}\n', False),
+    ('::: note\npre\n{% b\n b %}\n:::\n', True),
+    ('- pre\n  {% b\n   b %}\n', True),
+    ('- a\n  - b\n    {% c\n     d %}\n', True),
+    ('- pre\n{% b %}\n', True),
+    ('- pre\n\n{% b\n b %}\n', True),
+])
+def test_a_multi_line_braced_comment_on_a_lazy_line_is_text(source, comment):
+    assert any(t is Comment.Preproc and v == '{%' for t, v in tokens(source)) is comment
