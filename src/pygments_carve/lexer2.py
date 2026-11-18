@@ -6,6 +6,7 @@ available for 0.1 documents.
 """
 
 import re
+from types import FunctionType
 
 from pygments.lexer import bygroups
 from pygments.token import Comment, Generic, Punctuation, String, Text
@@ -57,6 +58,24 @@ class CommentFence2(old._CommentFence):
         return CommentFenceScan2(self, flags)
 
 
+def comment_fence2(lexer, match):
+    """Use the 0.2 wider closer when assigning delimiter tokens."""
+    def closer(depth, width):
+        return re.compile(r'(?:[ \t]*> ){0,%d}[ \t]*%%{%d,}[ \t]*(?=\n|$)'
+                          % (depth, width))
+
+    emitter = FunctionType(old._comment_fence.__code__,
+                           {**old._comment_fence.__globals__, '_comment_closer': closer})
+    tokens = list(emitter(lexer, match))
+    closer_line = match.string.rfind('\n', 0, match.end(8)) + 1
+    for offset, token, value in tokens:
+        if (token is Comment and offset >= closer_line
+                and re.fullmatch(r'%+', value)):
+            yield offset, Comment.Preproc, value
+        else:
+            yield offset, token, value
+
+
 def changed(rule, pattern):
     """Keep a rule's action and state transitions while changing its shape."""
     return (pattern, *rule[1:])
@@ -73,8 +92,8 @@ for state, indices in [('block', (1, 19)), ('deflist', (5,))]:
     for index in indices:
         original = old.CarveLexer.tokens[state][index]
         scan = original[0]
-        rules[state][index] = changed(
-            original, CommentFence2(scan.opener, own_line=scan.own_line))
+        rules[state][index] = (CommentFence2(scan.opener, own_line=scan.own_line),
+                               comment_fence2, *original[2:])
 
 # Region markers are structural lines. A regular comment remains skipped.
 region = (r'^(' + old._MARGIN + r')(%%[ \t]*#(?:region[ \t]+[A-Za-z_][\w-]*'

@@ -57,6 +57,12 @@ def test_comment_closer_requires_only_whitespace_after_the_run():
     assert sum(token is Comment.Preproc for token, _ in tokens) == 2
 
 
+def test_wider_comment_closer_is_entirely_a_delimiter():
+    tokens = scoped('%%%\nbody\n%%%%\nafter\n')
+    assert ''.join(value for token, value in tokens if token is Comment.Preproc) == '%%%%%%%'
+    assert not any(token is Comment and '%' in value for token, value in tokens)
+
+
 def test_a_later_caret_is_caption_text():
     tokens = scoped('| a | b |\n^ first\n^ second\n')
     assert sum(token is Punctuation.Caption for token, _ in tokens) == 1
