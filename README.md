@@ -16,6 +16,14 @@ pip install git+https://github.com/markup-carve/pygments-carve
 pygmentize -l carve page.crv
 ```
 
+Use the separate `carve2` or `crv2` alias for a Carve 0.2 document:
+
+```sh
+pygmentize -l carve2 page.crv
+```
+
+The `carve` and `crv` aliases continue to select the 0.1 lexer.
+
 ## Documentation
 
 - [Carve documentation](https://markup-carve.github.io/carve/)
