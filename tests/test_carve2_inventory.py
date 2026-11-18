@@ -63,6 +63,11 @@ def test_a_later_caret_is_caption_text():
     assert any(token is Generic.Subheading.Caption and '^' in value for token, value in tokens)
 
 
+@pytest.mark.parametrize('source', ['- +\n```\nx\n```\n', '> +\n- item\n'])
+def test_first_block_plus_is_text(source):
+    assert not any(value == '+' and token is Punctuation for token, value in scoped(source))
+
+
 def test_new_alias_and_legacy_lexer_stay_separate():
     assert isinstance(get_lexer_by_name('carve2'), Carve2Lexer)
     assert isinstance(get_lexer_by_name('carve'), CarveLexer)

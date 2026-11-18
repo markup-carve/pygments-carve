@@ -158,6 +158,8 @@ inline = rules['inlinecontent']
 for index in (8, 35, 36, 39, 40, 41):
     inline.remove(old.CarveLexer.tokens['inlinecontent'][index])
 
+rules['nested'].pop(0)
+
 # A term accepts plain following lines until its description or a blank line.
 rules['termtail'].insert(-1, (r'^[^\n]+', Generic.Subheading))
 
