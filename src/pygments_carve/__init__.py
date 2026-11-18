@@ -7,6 +7,7 @@ Pygments consumer start working with no further configuration.
 """
 
 from pygments_carve.lexer import CarveLexer
+from pygments_carve.lexer2 import Carve2Lexer
 
-__all__ = ['CarveLexer']
+__all__ = ['CarveLexer', 'Carve2Lexer']
 __version__ = '0.1.5'
