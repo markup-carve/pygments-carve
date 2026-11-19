@@ -32,6 +32,12 @@ jobs:
         with:
           submodules: true
 
+      - uses: actions/checkout@v7
+        with:
+          repository: markup-carve/carve
+          ref: next2
+          path: spec-02
+
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
@@ -39,3 +45,5 @@ jobs:
       - run: pip install -e '.[test]'
 
       - run: pytest -q
+        env:
+          CARVE_SPEC_02: spec-02
