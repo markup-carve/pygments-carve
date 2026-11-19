@@ -13,10 +13,6 @@ ROOT = Path(os.environ.get('CARVE_SPEC_02', 'spec-02'))
 CORPUS = ROOT / 'spec' / '0.2' / 'conformance'
 if not CORPUS.is_dir() and not os.environ.get('CI'):
     pytest.skip('clone carve next2 to spec-02 for corpus checks', allow_module_level=True)
-KNOWN_SCANNER_GAPS = {
-    'syntax-blocks-247', 'syntax-inline-104', 'syntax-inline-112',
-    'CC-028', 'CC-042', 'CC-067',
-}
 
 GRAMMAR_CASES = Path(__file__).resolve().parents[1] / 'carve-grammars' / 'tests' / 'carve-spec-cases.json'
 
@@ -35,8 +31,6 @@ def inputs():
 
 @pytest.mark.parametrize('case, source', inputs())
 def test_public_lexer_preserves_every_spec_source(case, source):
-    if case in KNOWN_SCANNER_GAPS:
-        pytest.xfail('existing 0.2 scanner recursion on a deeply nested source')
     tokens = list(CarveLexer().get_tokens(source))
     assert ''.join(value for _, value in tokens) == source.replace('\r', '\n'), case
     assert not any(token in Error for token, _ in tokens), case
