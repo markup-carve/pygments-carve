@@ -4,10 +4,10 @@ import pytest
 from pygments.lexers import get_lexer_by_name
 from pygments.token import Comment, Generic, Keyword, Literal, Name, Number, Operator, Punctuation, Text
 
-from pygments_carve import Carve2Lexer, CarveLexer
+from pygments_carve import CarveLexer
 
 
-LEXER = Carve2Lexer()
+LEXER = CarveLexer()
 
 
 def scoped(source):
@@ -74,10 +74,9 @@ def test_first_block_plus_is_text(source):
     assert not any(value == '+' and token is Punctuation for token, value in scoped(source))
 
 
-def test_new_alias_and_legacy_lexer_stay_separate():
-    assert isinstance(get_lexer_by_name('carve2'), Carve2Lexer)
+def test_public_lexer_registration():
     assert isinstance(get_lexer_by_name('carve'), CarveLexer)
-    assert (Generic.Underline, 'u') in list(CarveLexer().get_tokens('_u_'))
+    assert isinstance(get_lexer_by_name('crv'), CarveLexer)
     assert not any(token is Generic.Underline for token, _ in LEXER.get_tokens('_u_'))
 
 

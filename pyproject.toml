@@ -31,9 +31,8 @@ Issues = "https://github.com/markup-carve/pygments-carve/issues"
 # words in MkDocs, Sphinx, zensical and anything else built on Pygments.
 [project.entry-points."pygments.lexers"]
 carve = "pygments_carve.lexer:CarveLexer"
-carve2 = "pygments_carve.lexer2:Carve2Lexer"
-csv = "pygments_carve.lexer:CsvLexer"
-tsv = "pygments_carve.lexer:TsvLexer"
+csv = "pygments_carve.scanner:CsvLexer"
+tsv = "pygments_carve.scanner:TsvLexer"
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
