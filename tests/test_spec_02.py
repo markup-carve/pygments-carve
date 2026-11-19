@@ -11,6 +11,8 @@ from pygments_carve import CarveLexer
 
 ROOT = Path(os.environ.get('CARVE_SPEC_02', 'spec-02'))
 CORPUS = ROOT / 'spec' / '0.2' / 'conformance'
+if not CORPUS.is_dir() and not os.environ.get('CI'):
+    pytest.skip('clone carve next2 to spec-02 for corpus checks', allow_module_level=True)
 KNOWN_SCANNER_GAPS = {
     'syntax-blocks-247', 'syntax-inline-104', 'syntax-inline-112',
     'CC-028', 'CC-042', 'CC-067',
