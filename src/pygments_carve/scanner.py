@@ -50,7 +50,7 @@ from pygments.lexer import (
     bygroups,
     do_insertions,
     include,
-    using,
+    using as _pygments_using,
     this,
 )
 from pygments.lexers import get_lexer_by_name
@@ -69,6 +69,27 @@ from pygments.token import (
 from pygments.util import ClassNotFound, get_bool_opt
 
 __all__ = ['CsvLexer', 'TsvLexer']
+
+
+_SUBLEX = object()
+
+
+def using(other, **kwargs):
+    """Defer same-lexer runs so nested source uses a stack, not Python calls."""
+    if other is not this:
+        return _pygments_using(other, **kwargs)
+    state = kwargs.pop('state', ('root',))
+    if isinstance(state, str):
+        state = ('root', state)
+    if kwargs:
+        return _pygments_using(other, state=state, **kwargs)
+
+    def callback(lexer, match, ctx=None):
+        yield match.start(), _SUBLEX, (match.group(), state)
+        if ctx:
+            ctx.pos = match.end()
+
+    return callback
 
 #: A leading margin. A byte order mark at the start of a document is not
 #: content, so a block opener behind one is still a block opener. Anywhere else
@@ -2214,7 +2235,7 @@ class _BaseCarveLexer(RegexLexer, metaclass=_ScanMeta):
         self.handlecodeblocks = get_bool_opt(options, 'handlecodeblocks', True)
 
     def get_tokens_unprocessed(self, text, stack=('root',)):
-        tokens = self._attach_attributes(text, stack)
+        tokens = self._attach_attributes(text, self._iter_tokens(text, stack))
         if tuple(stack) != ('root',) or '[^' not in text:
             yield from tokens
             return
@@ -2241,7 +2262,24 @@ class _BaseCarveLexer(RegexLexer, metaclass=_ScanMeta):
                 token = Text
             yield index, token, value
 
-    def _attach_attributes(self, text, stack):
+    def _iter_tokens(self, text, stack):
+        """Expand same-lexer requests in source order with explicit frames."""
+        frames = [(0, super().get_tokens_unprocessed(text, stack))]
+        while frames:
+            base, tokens = frames[-1]
+            try:
+                index, token, value = next(tokens)
+            except StopIteration:
+                frames.pop()
+                continue
+            if token is _SUBLEX:
+                source, child_stack = value
+                frames.append((base + index,
+                               super().get_tokens_unprocessed(source, child_stack)))
+            else:
+                yield base + index, token, value
+
+    def _attach_attributes(self, text, tokens):
         # The inline attribute rule matches `{...}` anywhere; after plain
         # brackets such as `(a){.c}` or `\[x]{.c}` the engine keeps it as text.
         # It attaches only to the element right before it (`08-attributes.ebnf`):
@@ -2251,7 +2289,7 @@ class _BaseCarveLexer(RegexLexer, metaclass=_ScanMeta):
         paragraphs = None
         previous = None
         run_end = -1
-        for index, token, value in super().get_tokens_unprocessed(text, stack):
+        for index, token, value in tokens:
             if token is _INLINE_ATTRS:
                 before = text[index - 1] if index else '\n'
                 if index < run_end:
