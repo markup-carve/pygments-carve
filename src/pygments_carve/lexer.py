@@ -7,7 +7,7 @@ from types import FunctionType
 from pygments.lexer import bygroups
 from pygments.token import Comment, Generic, Punctuation, String, Text
 
-from . import _scanner as old
+from . import scanner as old
 
 
 class CommentFenceScan2(old._CommentFenceScan):
