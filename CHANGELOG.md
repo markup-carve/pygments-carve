@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Breaking
+
+- Make the 0.2 lexer the `carve` and `crv` entry, remove the `carve2` aliases and 0.1 tests, and retain the shared scanner internally.
+
 ## [0.1.5] - 2026-11-12
 
 The lexer follows the Carve 0.1.14 readings.
