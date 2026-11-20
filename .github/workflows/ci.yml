@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: markup-carve/carve
-          ref: 9768ba7799c3850380edb886a7785631d82a1595
+          ref: 8e5e2b251c79be101046dda87bb986066b183928
           path: spec-02
 
       - uses: actions/setup-python@v7
