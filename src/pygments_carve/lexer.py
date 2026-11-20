@@ -8,6 +8,7 @@ from pygments.lexer import bygroups
 from pygments.token import Comment, Generic, Punctuation, String, Text
 
 from . import scanner as old
+from .scanner import CsvLexer, TsvLexer  # noqa: F401  (0.1 import path)
 
 
 class CommentFenceScan2(old._CommentFenceScan):
