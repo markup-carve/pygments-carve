@@ -32,7 +32,7 @@ def inputs():
 @pytest.mark.parametrize('case, source', inputs())
 def test_public_lexer_preserves_every_spec_source(case, source):
     tokens = list(CarveLexer().get_tokens(source))
-    assert ''.join(value for _, value in tokens) == source.replace('\r', '\n'), case
+    assert ''.join(value for _, value in tokens) == source.replace('\r\n', '\n').replace('\r', '\n'), case
     assert not any(token in Error for token, _ in tokens), case
 
 
