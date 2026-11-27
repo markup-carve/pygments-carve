@@ -5,7 +5,7 @@ import re
 from types import FunctionType
 
 from pygments.lexer import bygroups
-from pygments.token import Comment, Generic, Punctuation, String, Text
+from pygments.token import Comment, Generic, Name, Punctuation, String, Text
 
 from . import scanner as old
 from .scanner import CsvLexer, TsvLexer  # noqa: F401  (0.1 import path)
@@ -137,6 +137,30 @@ block[attribute_at] = changed(
 block.insert(attribute_at + 1,
              (r'^' + old._MARGIN + old._ATTRS + r'(?=[ \t]*(?:\n[ \t]*\n|\Z))', Text))
 
+# Snippets (C2-B-236, C2-I-128, C2-B-237), split as the carve-grammars
+# TextMate rules split them.
+SNIPPET_NAME = r'[A-Za-z0-9_][A-Za-z0-9_-]*'
+SNIPPET_PART = (r'(?:\.[A-Za-z0-9_-]+|:(?:[A-Za-z0-9]{1,8}(?:-[A-Za-z0-9]{1,8})*)?'
+                r'|[A-Za-z_][A-Za-z0-9_-]*=(?:"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\''
+                r'|[^\s"\'{}|\\]+)|[A-Za-z][A-Za-z0-9_-]*)')
+SNIPPET_USE = r'(\{\{)( +)(\$' + SNIPPET_NAME + r')( +)(\}\})'
+BLOCK_USE = r'[ \t]*\{\{ +\$' + SNIPPET_NAME + r' +\}\}[ \t]*(?:\n|\Z)'
+DEFINITION = (r'^((?:\A﻿)?)(\{)(\$' + SNIPPET_NAME + r')(?:( +)(' + SNIPPET_PART + r'(?: +' + SNIPPET_PART + r')* *))?(\})'
+              r'((?:\{ *' + SNIPPET_PART + r'(?: +' + SNIPPET_PART + r')* *\})*)(:)'
+              r'( (?=[ \t]*[^ \t\n])[^\n]*)')
+
+# A block use takes no attribute line (carve#6896): the line above is text.
+block[attribute_at] = changed(
+    attribute, old._AttrsLine(r'^(' + old._MARGIN + r')(' + old._ATTRS
+                               + r')(?=[ \t]*\n(?![ \t]*\n)(?!' + BLOCK_USE + r')[ \t]*\S)'))
+block[attribute_at:attribute_at] = [
+    (r'^' + old._MARGIN + old._ATTRS + r'[ \t]*(?=\n' + BLOCK_USE + r')', Text),
+    (r'^(' + old._MARGIN + r')' + SNIPPET_USE + r'(?=[ \t]*(?:\n|\Z))',
+     bygroups(Text, Punctuation, Text, Name.Variable, Text, Punctuation)),
+    (DEFINITION, bygroups(Text, Punctuation, Name.Variable, Text, Name.Attribute, Punctuation,
+                          Name.Attribute, Punctuation, old.using(old.this, state='inline'))),
+]
+
 # A header mark is still structural. Glued alignment marks and GFM separator
 # rows are ordinary cell content in 0.2.
 header = old._BaseCarveLexer.tokens['block'][32]
@@ -175,6 +199,14 @@ for index in (8, 35, 36, 39, 40, 41):
     inline.remove(old._BaseCarveLexer.tokens['inlinecontent'][index])
 
 rules['nested'].pop(0)
+# A definition sits outside every container, so after a marker it is prose.
+rules['nested'].insert(0, (r'\A(?=' + DEFINITION[1:] + r')', old._silent, 'paragraph'))
+
+# Before the include directive, which would read `$name` as a path. Glued
+# attribute blocks are text: a use carries none.
+directive = next(n for n, rule in enumerate(inline) if r'(\{\{)([ \t]+)' in getattr(rule[0], 'pattern', ''))
+inline.insert(directive, (SNIPPET_USE + r'((?:' + old._ATTRS + r')*)',
+                          bygroups(Punctuation, Text, Name.Variable, Text, Punctuation, Text)))
 
 # A term accepts plain following lines until its description or a blank line.
 rules['termtail'].insert(-1, (r'^[^\n]+', Generic.Subheading))
