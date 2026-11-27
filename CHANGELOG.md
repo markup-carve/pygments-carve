@@ -6,9 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-27
+
 ### Breaking
 
 - Make the 0.2 lexer the `carve` and `crv` entry, remove the `carve2` aliases and 0.1 tests, and retain the shared scanner internally.
+
+### Fixes
+
+- Deeply nested quotes, lists and inline content no longer raise
+  `RecursionError` (#160).
 
 ## [0.1.5] - 2026-11-12
 
