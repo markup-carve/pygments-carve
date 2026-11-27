@@ -3,4 +3,4 @@
 from pygments_carve.lexer import CarveLexer
 
 __all__ = ['CarveLexer']
-__version__ = '0.1.5'
+__version__ = '0.2.0'
